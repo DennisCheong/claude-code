@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+GoHttpProxy/
+.DS_Store
+*.log
+opencode/
+claude-config.json
+llm-wiki/
+ssh-implementation.md
+.github/
