@@ -6,7 +6,7 @@ import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpda
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { generateShellSuggestionsLabel } from '../shellPermissionHelpers.js';
-export type BashToolUseOption = 'yes' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'yes-classifier-reviewed' | 'no';
+export type BashToolUseOption = 'yes' | 'yes-current-chat' | 'yes-current-session' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'yes-classifier-reviewed' | 'no';
 
 /**
  * Check if a description already exists in the allow list.
@@ -72,6 +72,16 @@ export function bashToolUseOptions({
     options.push({
       label: 'Yes',
       value: 'yes'
+    });
+  }
+  if (suggestions.length > 0) {
+    options.push({
+      label: 'Yes, and allow current chat',
+      value: 'yes-current-chat'
+    });
+    options.push({
+      label: 'Yes, and allow current session',
+      value: 'yes-current-session'
     });
   }
 

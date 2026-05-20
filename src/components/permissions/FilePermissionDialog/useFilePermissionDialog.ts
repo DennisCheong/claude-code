@@ -119,6 +119,8 @@ export function useFilePermissionDialog<T extends ToolInput>({
             ? yesFeedbackModeEntered
             : noFeedbackModeEntered,
         scope: option.type === 'accept-session' ? option.scope : undefined,
+        destination:
+          option.type === 'accept-session' ? option.destination : undefined,
       })
     },
     [
@@ -137,7 +139,11 @@ export function useFilePermissionDialog<T extends ToolInput>({
 
   // Handler for confirm:cycleMode - select accept-session option
   const handleCycleMode = useCallback(() => {
-    const sessionOption = options.find(o => o.option.type === 'accept-session')
+    const sessionOption = options.find(
+      o =>
+        o.option.type === 'accept-session' &&
+        o.option.destination === 'session',
+    )
     if (sessionOption) {
       const parsedInput = parseInput(toolUseConfirm.input)
       onChange(sessionOption.option, parsedInput)

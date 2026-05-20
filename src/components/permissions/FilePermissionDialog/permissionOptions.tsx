@@ -42,6 +42,7 @@ export type PermissionOption = {
   type: 'accept-once';
 } | {
   type: 'accept-session';
+  destination: 'conversation' | 'session';
   scope?: 'claude-folder' | 'global-claude-folder';
 } | {
   type: 'reject';
@@ -104,47 +105,42 @@ export function getFilePermissionOptions({
   // persisted permission rules.
   if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
     options.push({
-      label: 'Yes, and allow Claude to edit its own settings for this session',
+      label: 'Yes, and allow current chat',
+      value: 'yes-chat',
+      option: {
+        type: 'accept-session',
+        destination: 'conversation',
+        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
+      }
+    });
+    options.push({
+      label: <Text>
+          Yes, and allow current session <Text bold>({modeCycleShortcut})</Text>
+        </Text>,
       value: 'yes-claude-folder',
       option: {
         type: 'accept-session',
+        destination: 'session',
         scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
       }
     });
   } else {
-    // Option 2: Allow all changes/reads during session
-    let sessionLabel: ReactNode;
-    if (inAllowedPath) {
-      // Inside working directory
-      if (operationType === 'read') {
-        sessionLabel = 'Yes, during this session';
-      } else {
-        sessionLabel = <Text>
-            Yes, allow all edits during this session{' '}
-            <Text bold>({modeCycleShortcut})</Text>
-          </Text>;
-      }
-    } else {
-      // Outside working directory - include directory name
-      const dirPath = getDirectoryForPath(filePath);
-      const dirName = basename(dirPath) || 'this directory';
-      if (operationType === 'read') {
-        sessionLabel = <Text>
-            Yes, allow reading from <Text bold>{dirName}/</Text> during this
-            session
-          </Text>;
-      } else {
-        sessionLabel = <Text>
-            Yes, allow all edits in <Text bold>{dirName}/</Text> during this
-            session <Text bold>({modeCycleShortcut})</Text>
-          </Text>;
-      }
-    }
     options.push({
-      label: sessionLabel,
+      label: 'Yes, and allow current chat',
+      value: 'yes-chat',
+      option: {
+        type: 'accept-session',
+        destination: 'conversation'
+      }
+    });
+    options.push({
+      label: <Text>
+          Yes, and allow current session <Text bold>({modeCycleShortcut})</Text>
+        </Text>,
       value: 'yes-session',
       option: {
-        type: 'accept-session'
+        type: 'accept-session',
+        destination: 'session'
       }
     });
   }

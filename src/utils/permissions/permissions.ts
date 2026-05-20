@@ -110,6 +110,7 @@ const PERMISSION_RULE_SOURCES = [
   ...SETTING_SOURCES,
   'cliArg',
   'command',
+  'conversation',
   'session',
 ] as const satisfies readonly PermissionRuleSource[]
 

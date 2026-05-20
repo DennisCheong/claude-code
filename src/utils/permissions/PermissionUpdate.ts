@@ -3,6 +3,7 @@ import type { ToolPermissionContext } from '../../Tool.js'
 // Types extracted to src/types/permissions.ts to break import cycles
 import type {
   AdditionalWorkingDirectory,
+  ToolPermissionRulesBySource,
   WorkingDirectorySource,
 } from '../../types/permissions.js'
 import { logForDebugging } from '../debug.js'
@@ -61,9 +62,22 @@ export function applyPermissionUpdate(
       logForDebugging(
         `Applying permission update: Setting mode to '${update.mode}'`,
       )
+      if (update.destination === 'conversation') {
+        return {
+          ...context,
+          mode: update.mode,
+          conversationMode: update.mode,
+          preConversationMode:
+            context.conversationMode === undefined
+              ? context.mode
+              : context.preConversationMode,
+        }
+      }
       return {
         ...context,
         mode: update.mode,
+        conversationMode: undefined,
+        preConversationMode: undefined,
       }
 
     case 'addRules': {
@@ -153,10 +167,11 @@ export function applyPermissionUpdate(
             : 'alwaysAskRules'
 
       // Filter out the rules to be removed
-      const existingRules = context[ruleKind][update.destination] || []
+      const existingRules =
+        (context[ruleKind][update.destination] as string[] | undefined) || []
       const rulesToRemove = new Set(ruleStrings)
       const filteredRules = existingRules.filter(
-        rule => !rulesToRemove.has(rule),
+        (rule: string) => !rulesToRemove.has(rule),
       )
 
       return {
@@ -203,6 +218,69 @@ export function applyPermissionUpdates(
   }
 
   return updatedContext
+}
+
+export function retargetPermissionUpdates(
+  updates: PermissionUpdate[],
+  destination: PermissionUpdateDestination,
+): PermissionUpdate[] {
+  return updates.map(update => ({
+    ...update,
+    destination,
+  }))
+}
+
+function clearRulesForDestination(
+  rules: ToolPermissionRulesBySource | undefined,
+  destination: PermissionUpdateDestination,
+): ToolPermissionRulesBySource | undefined {
+  if (!rules || !(destination in rules)) {
+    return rules
+  }
+
+  const { [destination]: _removed, ...rest } = rules
+  return rest as ToolPermissionRulesBySource
+}
+
+export function clearPermissionDestination(
+  context: ToolPermissionContext,
+  destination: PermissionUpdateDestination,
+): ToolPermissionContext {
+  const additionalWorkingDirectoryEntries = Array.from(
+    context.additionalWorkingDirectories.entries(),
+  ) as Array<[string, AdditionalWorkingDirectory]>
+  const additionalWorkingDirectories = new Map<string, AdditionalWorkingDirectory>(
+    additionalWorkingDirectoryEntries.filter(
+      (entry): entry is [string, AdditionalWorkingDirectory] =>
+        entry[1].source !== destination,
+    ),
+  )
+  const shouldRestoreConversationMode =
+    destination === 'conversation' &&
+    context.conversationMode !== undefined &&
+    context.mode === context.conversationMode
+
+  return {
+    ...context,
+    mode: shouldRestoreConversationMode
+      ? (context.preConversationMode ?? 'default')
+      : context.mode,
+    conversationMode:
+      destination === 'conversation' ? undefined : context.conversationMode,
+    preConversationMode:
+      destination === 'conversation' ? undefined : context.preConversationMode,
+    additionalWorkingDirectories,
+    alwaysAllowRules:
+      clearRulesForDestination(context.alwaysAllowRules, destination) ?? {},
+    alwaysDenyRules:
+      clearRulesForDestination(context.alwaysDenyRules, destination) ?? {},
+    alwaysAskRules:
+      clearRulesForDestination(context.alwaysAskRules, destination) ?? {},
+    strippedDangerousRules: clearRulesForDestination(
+      context.strippedDangerousRules,
+      destination,
+    ),
+  }
 }
 
 export function supportsPersistence(

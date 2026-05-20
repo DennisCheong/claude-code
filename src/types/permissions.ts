@@ -59,6 +59,7 @@ export type PermissionRuleSource =
   | 'policySettings'
   | 'cliArg'
   | 'command'
+  | 'conversation'
   | 'session'
 
 /**
@@ -89,6 +90,7 @@ export type PermissionUpdateDestination =
   | 'userSettings'
   | 'projectSettings'
   | 'localSettings'
+  | 'conversation'
   | 'session'
   | 'cliArg'
 
@@ -434,6 +436,8 @@ export type ToolPermissionContext = {
   readonly alwaysDenyRules: ToolPermissionRulesBySource
   readonly alwaysAskRules: ToolPermissionRulesBySource
   readonly isBypassPermissionsModeAvailable: boolean
+  readonly conversationMode?: PermissionMode
+  readonly preConversationMode?: PermissionMode
   readonly strippedDangerousRules?: ToolPermissionRulesBySource
   readonly shouldAvoidPermissionPrompts?: boolean
   readonly awaitAutomatedChecksBeforeDialog?: boolean

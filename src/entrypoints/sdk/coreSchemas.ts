@@ -244,6 +244,7 @@ export const PermissionUpdateDestinationSchema = lazySchema(() =>
     'userSettings',
     'projectSettings',
     'localSettings',
+    'conversation',
     'session',
     'cliArg',
   ]),

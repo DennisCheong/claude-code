@@ -70,7 +70,7 @@ export function getSourceDisplayName(
  * @returns Display name for the source in lowercase
  */
 export function getSettingSourceDisplayNameLowercase(
-  source: SettingSource | 'cliArg' | 'command' | 'session',
+  source: SettingSource | 'cliArg' | 'command' | 'conversation' | 'session',
 ): string {
   switch (source) {
     case 'userSettings':
@@ -87,6 +87,8 @@ export function getSettingSourceDisplayNameLowercase(
       return 'CLI argument'
     case 'command':
       return 'command configuration'
+    case 'conversation':
+      return 'current chat'
     case 'session':
       return 'current session'
   }
@@ -98,7 +100,7 @@ export function getSettingSourceDisplayNameLowercase(
  * @returns Display name for the source with first letter capitalized
  */
 export function getSettingSourceDisplayNameCapitalized(
-  source: SettingSource | 'cliArg' | 'command' | 'session',
+  source: SettingSource | 'cliArg' | 'command' | 'conversation' | 'session',
 ): string {
   switch (source) {
     case 'userSettings':
@@ -115,6 +117,8 @@ export function getSettingSourceDisplayNameCapitalized(
       return 'CLI argument'
     case 'command':
       return 'Command configuration'
+    case 'conversation':
+      return 'Current chat'
     case 'session':
       return 'Current session'
   }

@@ -45,7 +45,10 @@ import type {
 } from './PermissionResult.js'
 import type { PermissionRule, PermissionRuleSource } from './PermissionRule.js'
 import { createReadRuleSuggestion } from './PermissionUpdate.js'
-import type { PermissionUpdate } from './PermissionUpdateSchema.js'
+import type {
+  PermissionUpdate,
+  PermissionUpdateDestination,
+} from './PermissionUpdateSchema.js'
 import { getRuleByContentsForToolName } from './permissions.js'
 
 declare const MACRO: { VERSION: string }
@@ -747,6 +750,7 @@ function rootPathForSource(source: PermissionRuleSource): string {
   switch (source) {
     case 'cliArg':
     case 'command':
+    case 'conversation':
     case 'session':
       return expandPath(getOriginalCwd())
     case 'userSettings':
@@ -1250,9 +1254,9 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   }
 
   // 1.6. Check for .claude/** allow rules BEFORE safety checks
-  // This allows session-level permissions to bypass the safety blocks for .claude/
-  // We only allow this for session-level rules to prevent users from accidentally
-  // permanently granting broad access to their .claude/ folder.
+  // This allows transient permissions to bypass the safety blocks for .claude/
+  // We only allow this for current-chat/current-session rules to prevent users
+  // from accidentally permanently granting broad access to their .claude/ folder.
   //
   // matchingRuleForInput returns the first match across all sources. If the user
   // also has a broader Edit(.claude) rule in userSettings (e.g. from sandbox
@@ -1264,6 +1268,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     {
       ...toolPermissionContext,
       alwaysAllowRules: {
+        conversation: toolPermissionContext.alwaysAllowRules.conversation ?? [],
         session: toolPermissionContext.alwaysAllowRules.session ?? [],
       },
     },
@@ -1416,6 +1421,7 @@ export function generateSuggestions(
   operationType: 'read' | 'write' | 'create',
   toolPermissionContext: ToolPermissionContext,
   precomputedPathsToCheck?: readonly string[],
+  destination: PermissionUpdateDestination = 'session',
 ): PermissionUpdate[] {
   const isOutsideWorkingDir = !pathInAllowedWorkingPath(
     filePath,
@@ -1430,7 +1436,7 @@ export function generateSuggestions(
     const dirsToAdd = getPathsForPermissionCheck(dirPath)
 
     const suggestions = dirsToAdd
-      .map(dir => createReadRuleSuggestion(dir, 'session'))
+      .map(dir => createReadRuleSuggestion(dir, destination))
       .filter((s): s is PermissionUpdate => s !== undefined)
 
     return suggestions
@@ -1447,7 +1453,7 @@ export function generateSuggestions(
 
   if (operationType === 'write' || operationType === 'create') {
     const updates: PermissionUpdate[] = shouldSuggestAcceptEdits
-      ? [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]
+      ? [{ type: 'setMode', mode: 'acceptEdits', destination }]
       : []
 
     if (isOutsideWorkingDir) {
@@ -1459,7 +1465,7 @@ export function generateSuggestions(
       updates.push({
         type: 'addDirectories',
         directories: dirsToAdd,
-        destination: 'session',
+        destination,
       })
     }
 
@@ -1468,7 +1474,7 @@ export function generateSuggestions(
 
   // For read operations inside working directories, just change mode
   return shouldSuggestAcceptEdits
-    ? [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]
+    ? [{ type: 'setMode', mode: 'acceptEdits', destination }]
     : []
 }
 

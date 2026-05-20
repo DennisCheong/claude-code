@@ -31,6 +31,7 @@ import {
 } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
 import { clearAllPlanSlugs } from '../../utils/plans.js'
+import { clearPermissionDestination } from '../../utils/permissions/PermissionUpdate.js'
 import { setCwd } from '../../utils/Shell.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
 import {
@@ -169,6 +170,10 @@ export async function clearConversation({
         ...prev,
         tasks: nextTasks,
         attribution: createEmptyAttributionState(),
+        toolPermissionContext: clearPermissionDestination(
+          prev.toolPermissionContext,
+          'conversation',
+        ),
         // Clear standalone agent context (name/color set by /rename, /color)
         // so the new session doesn't display the old session's identity badge
         standaloneAgentContext: undefined,

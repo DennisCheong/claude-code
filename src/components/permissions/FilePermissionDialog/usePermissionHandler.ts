@@ -58,6 +58,7 @@ export type PermissionHandlerOptions = {
   feedback?: string
   enteredFeedbackMode?: boolean
   scope?: 'claude-folder' | 'global-claude-folder'
+  destination?: 'conversation' | 'session'
 }
 
 function handleAcceptOnce(
@@ -100,6 +101,7 @@ function handleAcceptSession(
   } = params
 
   logPermissionEvent('accept', completionType, languageName, messageId)
+  const destination = options?.destination ?? 'session'
 
   // For claude-folder scope, grant session-level access to all .claude/ files
   if (
@@ -120,7 +122,7 @@ function handleAcceptSession(
           },
         ],
         behavior: 'allow',
-        destination: 'session',
+        destination,
       },
     ]
     onDone()
@@ -130,7 +132,13 @@ function handleAcceptSession(
 
   // Generate permission updates if path is provided
   const suggestions = path
-    ? generateSuggestions(path, operationType, toolPermissionContext)
+    ? generateSuggestions(
+        path,
+        operationType,
+        toolPermissionContext,
+        undefined,
+        destination,
+      )
     : []
 
   onDone()
