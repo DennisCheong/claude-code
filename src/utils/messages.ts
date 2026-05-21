@@ -75,6 +75,11 @@ import { isAdvisorBlock } from './advisor.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { count } from './array.js'
 import {
+  appendStreamingThinking,
+  startStreamingThinking,
+  stopStreamingThinking,
+} from './streamingThinkingState.js'
+import {
   type Attachment,
   type HookAttachment,
   type HookPermissionDecisionAttachment,
@@ -3011,6 +3016,7 @@ export function handleMessageFromStream(
       switch (message.event.content_block.type) {
         case 'thinking':
         case 'redacted_thinking':
+          onStreamingThinking?.(() => startStreamingThinking())
           onSetStreamMode('thinking')
           return
         case 'text':
@@ -3073,6 +3079,9 @@ export function handleMessageFromStream(
           return
         }
         case 'thinking_delta':
+          onStreamingThinking?.(current =>
+            appendStreamingThinking(current, message.event.delta.thinking),
+          )
           onUpdateLength(message.event.delta.thinking)
           return
         case 'signature_delta':
@@ -3084,6 +3093,7 @@ export function handleMessageFromStream(
           return
       }
     case 'content_block_stop':
+      onStreamingThinking?.(current => stopStreamingThinking(current))
       return
     case 'message_delta':
       onSetStreamMode('responding')
