@@ -54,7 +54,6 @@ import { useIdeLogging } from '../hooks/useIdeLogging.js';
 import { PermissionRequest, type ToolUseConfirm } from '../components/permissions/PermissionRequest.js';
 import { ElicitationDialog } from '../components/mcp/ElicitationDialog.js';
 import { PromptDialog } from '../components/hooks/PromptDialog.js';
-import { clearPermissionDestination } from '../utils/permissions/PermissionUpdate.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
@@ -1836,13 +1835,6 @@ export function REPL({
       // Clear any active loading state (no queryId since we're not in a query)
       resetLoadingState();
       setAbortController(null);
-      setAppState(prev => ({
-        ...prev,
-        toolPermissionContext: clearPermissionDestination(
-          prev.toolPermissionContext,
-          'conversation',
-        ),
-      }));
       setConversationId(sessionId);
 
       // Get target session's costs BEFORE saving current session
@@ -2036,17 +2028,13 @@ export function REPL({
     // High priority dialogs (always show regardless of typing)
     if (isMessageSelectorVisible) return 'message-selector';
 
-    // Tool approval is a blocking state. Keep it visible even while the
-    // prompt input still has active text or a transient tool JSX animation is
-    // mounted, so write/edit requests cannot stall behind suppression paths.
-    if (toolUseConfirmQueue[0]) return 'tool-permission';
-
     // Suppress interrupt dialogs while user is actively typing
     if (isPromptInputActive) return undefined;
     if (sandboxPermissionRequestQueue[0]) return 'sandbox-permission';
 
     // Permission/interactive dialogs (show unless blocked by toolJSX)
     const allowDialogsWithAnimation = !toolJSX || toolJSX.shouldContinueAnimation;
+    if (allowDialogsWithAnimation && toolUseConfirmQueue[0]) return 'tool-permission';
     if (allowDialogsWithAnimation && promptQueue[0]) return 'prompt';
     // Worker sandbox permission prompts (network access) from swarm workers
     if (allowDialogsWithAnimation && workerSandboxPermissions.queue[0]) return 'worker-sandbox-permission';
@@ -2084,7 +2072,7 @@ export function REPL({
   const focusedInputDialog = getFocusedInputDialog();
 
   // True when permission prompts exist but are hidden because the user is typing
-  const hasSuppressedDialogs = isPromptInputActive && (sandboxPermissionRequestQueue[0] || promptQueue[0] || workerSandboxPermissions.queue[0] || elicitation.queue[0] || showingCostDialog);
+  const hasSuppressedDialogs = isPromptInputActive && (sandboxPermissionRequestQueue[0] || toolUseConfirmQueue[0] || promptQueue[0] || workerSandboxPermissions.queue[0] || elicitation.queue[0] || showingCostDialog);
 
   // Keep ref in sync so timer callbacks can read the current value
   focusedInputDialogRef.current = focusedInputDialog;

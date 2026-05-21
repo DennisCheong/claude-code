@@ -128,8 +128,6 @@ export type ToolPermissionContext = DeepImmutable<{
   alwaysAskRules: ToolPermissionRulesBySource
   isBypassPermissionsModeAvailable: boolean
   isAutoModeAvailable?: boolean
-  conversationMode?: PermissionMode
-  preConversationMode?: PermissionMode
   strippedDangerousRules?: ToolPermissionRulesBySource
   /** When true, permission prompts are auto-denied (e.g., background agents that can't show UI) */
   shouldAvoidPermissionPrompts?: boolean

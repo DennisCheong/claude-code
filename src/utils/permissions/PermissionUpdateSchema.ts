@@ -32,8 +32,6 @@ export const permissionUpdateDestinationSchema = lazySchema(() =>
     'projectSettings',
     // Local settings (gitignored)
     'localSettings',
-    // In-memory for the current chat only
-    'conversation',
     // In-memory for the current session only
     'session',
     // From the command line arguments

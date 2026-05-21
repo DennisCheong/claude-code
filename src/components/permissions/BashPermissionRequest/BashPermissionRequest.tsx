@@ -15,7 +15,7 @@ import { parseSedEditCommand } from '../../../tools/BashTool/sedEditParser.js';
 import { shouldUseSandbox } from '../../../tools/BashTool/shouldUseSandbox.js';
 import { getCompoundCommandPrefixesStatic } from '../../../utils/bash/prefix.js';
 import { createPromptRuleContent, generateGenericDescription, getBashPromptAllowDescriptions, isClassifierPermissionsEnabled } from '../../../utils/permissions/bashClassifier.js';
-import { extractRules, retargetPermissionUpdates } from '../../../utils/permissions/PermissionUpdate.js';
+import { extractRules } from '../../../utils/permissions/PermissionUpdate.js';
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js';
 import { SandboxManager } from '../../../utils/sandbox/sandbox-adapter.js';
 import { Select } from '../../CustomSelect/select.js';
@@ -321,21 +321,17 @@ function BashPermissionRequestInner({
     // Map options to numeric values for analytics (strings not allowed in logEvent)
     let optionIndex: Record<string, number> = {
       yes: 1,
-      'yes-current-chat': 2,
-      'yes-current-session': 3,
-      'yes-apply-suggestions': 4,
-      'yes-prefix-edited': 4,
-      no: 5
+      'yes-apply-suggestions': 2,
+      'yes-prefix-edited': 2,
+      no: 3
     };
     if (feature('BASH_CLASSIFIER')) {
       optionIndex = {
         yes: 1,
-        'yes-current-chat': 2,
-        'yes-current-session': 3,
-        'yes-apply-suggestions': 4,
-        'yes-prefix-edited': 4,
-        'yes-classifier-reviewed': 5,
-        no: 6
+        'yes-apply-suggestions': 2,
+        'yes-prefix-edited': 2,
+        'yes-classifier-reviewed': 3,
+        no: 4
       };
     }
     logEvent('tengu_permission_request_option_selected', {
@@ -380,13 +376,6 @@ function BashPermissionRequestInner({
         }];
         toolUseConfirm.onAllow(toolUseConfirm.input, permissionUpdates);
       }
-      onDone();
-      return;
-    }
-    if (value_0 === 'yes-current-chat' || value_0 === 'yes-current-session') {
-      logUnaryPermissionEvent('tool_use_single', toolUseConfirm, 'accept');
-      const permissionUpdates = retargetPermissionUpdates('suggestions' in toolUseConfirm.permissionResult ? toolUseConfirm.permissionResult.suggestions || [] : [], value_0 === 'yes-current-chat' ? 'conversation' : 'session');
-      toolUseConfirm.onAllow(toolUseConfirm.input, permissionUpdates);
       onDone();
       return;
     }

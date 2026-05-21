@@ -460,7 +460,6 @@ function isPermissionUpdateDestination(
     'userSettings',
     'projectSettings',
     'localSettings',
-    'conversation',
     'session',
     'cliArg',
   ].includes(source)
