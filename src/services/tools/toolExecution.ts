@@ -85,6 +85,7 @@ import {
   startSessionActivity,
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
+import { logSessionDebugEvent } from '../../utils/sessionDebug.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
@@ -611,6 +612,14 @@ async function checkPermissionsAndCallTool(
     progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>,
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
+  logSessionDebugEvent('tool_call_received', {
+    toolName: tool.name,
+    toolUseID,
+    messageId,
+    requestId,
+    input,
+  })
+
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   const parsedInput = tool.inputSchema.safeParse(input)
   if (!parsedInput.success) {
@@ -632,6 +641,15 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool input error: ${errorContent.slice(0, 200)}`,
     )
+    logSessionDebugEvent('tool_input_validation_error', {
+      toolName: tool.name,
+      toolUseID,
+      messageId,
+      requestId,
+      input,
+      zodError: parsedInput.error,
+      formattedError: errorContent,
+    })
     logEvent('tengu_tool_use_error', {
       error:
         'InputValidationError' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -688,6 +706,14 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
     )
+    logSessionDebugEvent('tool_validate_input_error', {
+      toolName: tool.name,
+      toolUseID,
+      messageId,
+      requestId,
+      input: parsedInput.data,
+      validation: isValidCall,
+    })
     logEvent('tengu_tool_use_error', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -930,6 +956,21 @@ async function checkPermissionsAndCallTool(
   const permissionDecision = resolved.decision
   processedInput = resolved.input
   const permissionDurationMs = Date.now() - permissionStart
+  logSessionDebugEvent('tool_permission_decision', {
+    toolName: tool.name,
+    toolUseID,
+    messageId,
+    requestId,
+    input: processedInput,
+    permissionMode,
+    durationMs: permissionDurationMs,
+    behavior: permissionDecision.behavior,
+    message:
+      permissionDecision.behavior === 'allow'
+        ? undefined
+        : permissionDecision.message,
+    decisionReason: permissionDecision.decisionReason,
+  })
   // In auto mode, canUseTool awaits the classifier (side_query) — if that's
   // slow the collapsed view shows "Running…" with no (Ns) tick since
   // bash_progress hasn't started yet. Auto-only: in default mode this timer
@@ -994,6 +1035,16 @@ async function checkPermissionsAndCallTool(
 
   if (permissionDecision.behavior !== 'allow') {
     logForDebugging(`${tool.name} tool permission denied`)
+    logSessionDebugEvent('tool_permission_denied', {
+      toolName: tool.name,
+      toolUseID,
+      messageId,
+      requestId,
+      input: processedInput,
+      behavior: permissionDecision.behavior,
+      message: permissionDecision.message,
+      decisionReason: permissionDecision.decisionReason,
+    })
     const decisionInfo = toolUseContext.toolDecisions?.get(toolUseID)
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
@@ -1203,6 +1254,13 @@ async function checkPermissionsAndCallTool(
   } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
+  logSessionDebugEvent('tool_execute_start', {
+    toolName: tool.name,
+    toolUseID,
+    messageId,
+    requestId,
+    input: callInput,
+  })
   try {
     const result = await tool.call(
       callInput,
@@ -1222,6 +1280,14 @@ async function checkPermissionsAndCallTool(
     )
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+    logSessionDebugEvent('tool_execute_success', {
+      toolName: tool.name,
+      toolUseID,
+      messageId,
+      requestId,
+      durationMs,
+      result: result.data,
+    })
 
     // Log tool content/output as span event if enabled
     if (result.data && typeof result.data === 'object') {
@@ -1589,6 +1655,15 @@ async function checkPermissionsAndCallTool(
   } catch (error) {
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+    logSessionDebugEvent('tool_execute_error', {
+      toolName: tool.name,
+      toolUseID,
+      messageId,
+      requestId,
+      durationMs,
+      input: processedInput,
+      error,
+    })
 
     endToolExecutionSpan({
       success: false,

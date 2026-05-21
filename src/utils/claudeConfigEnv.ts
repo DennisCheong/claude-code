@@ -14,6 +14,21 @@ type ClaudeConfigFile = {
   provider?: unknown
   models?: unknown
   env?: Record<string, unknown>
+  debug?: unknown
+  debugLog?: unknown
+  sessionDebug?: unknown
+}
+
+type ClaudeConfigDebug = {
+  enabled?: unknown
+  fullSession?: unknown
+  logSessions?: unknown
+  logConversations?: unknown
+  logToolCalls?: unknown
+  level?: unknown
+  logLevel?: unknown
+  logsDir?: unknown
+  logDir?: unknown
 }
 
 type ClaudeConfigModelCapabilities = {
@@ -134,6 +149,29 @@ function normalizeNonEmptyString(value: unknown): string | undefined {
 
 function normalizeBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
+}
+
+function normalizeConfigBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  switch (value.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false
+    default:
+      return undefined
+  }
 }
 
 function normalizePositiveInteger(value: unknown): number | undefined {
@@ -561,17 +599,97 @@ function normalizeConfigEnv(
   return normalized
 }
 
-function getClaudeConfigCandidates(): string[] {
-  const entryPath = process.argv[1]
-  if (!entryPath) {
-    return []
+function normalizeDebugLogLevel(value: unknown): string | undefined {
+  const normalized = normalizeNonEmptyString(value)?.toLowerCase()
+  switch (normalized) {
+    case 'verbose':
+    case 'debug':
+    case 'info':
+    case 'warn':
+    case 'error':
+      return normalized
+    default:
+      return undefined
+  }
+}
+
+function normalizeDebugConfig(config: ClaudeConfigFile): Record<string, string> {
+  const env: Record<string, string> = {}
+  const debugObject =
+    config.debug && typeof config.debug === 'object' && !Array.isArray(config.debug)
+      ? (config.debug as ClaudeConfigDebug)
+      : null
+
+  const legacyDebugLog = normalizeConfigBoolean(config.debugLog)
+  const legacySessionDebug = normalizeConfigBoolean(config.sessionDebug)
+  const debugEnabled =
+    normalizeConfigBoolean(config.debug) ??
+    normalizeConfigBoolean(debugObject?.enabled) ??
+    legacyDebugLog
+  const fullSessionDebug =
+    debugEnabled === true ||
+    legacySessionDebug === true ||
+    legacyDebugLog === true ||
+    normalizeConfigBoolean(debugObject?.fullSession) === true ||
+    normalizeConfigBoolean(debugObject?.logSessions) === true ||
+    normalizeConfigBoolean(debugObject?.logConversations) === true ||
+    normalizeConfigBoolean(debugObject?.logToolCalls) === true
+
+  if (debugEnabled === true || fullSessionDebug === true) {
+    env.DEBUG = '1'
+  }
+  if (fullSessionDebug === true) {
+    env.CLAUDE_CODE_FULL_SESSION_DEBUG = '1'
+    env.CLAUDE_CODE_SESSION_DEBUG_LOG = '1'
+    env.CLAUDE_CODE_DEBUG_LOG_LEVEL = 'verbose'
   }
 
+  const configuredLevel = normalizeDebugLogLevel(
+    debugObject?.level ?? debugObject?.logLevel,
+  )
+  if (configuredLevel) {
+    env.CLAUDE_CODE_DEBUG_LOG_LEVEL = configuredLevel
+  }
+
+  const logsDir = normalizeNonEmptyString(
+    debugObject?.logsDir ?? debugObject?.logDir,
+  )
+  if (logsDir) {
+    env.CLAUDE_CODE_DEBUG_LOGS_DIR = logsDir
+  }
+
+  return env
+}
+
+function getClaudeConfigCandidates(): string[] {
+  const entryPath = process.argv[1]
   const candidates: string[] = []
-  let currentDir = dirname(resolve(entryPath))
+  const addCandidate = (candidate: string): void => {
+    const resolved = resolve(candidate)
+    if (!candidates.includes(resolved)) {
+      candidates.push(resolved)
+    }
+  }
+
+  let currentDir = resolve(process.cwd())
+
+  for (let depth = 0; depth < 4; depth += 1) {
+    addCandidate(resolve(currentDir, CLAUDE_CONFIG_FILE_NAME))
+    const parentDir = dirname(currentDir)
+    if (parentDir === currentDir) {
+      break
+    }
+    currentDir = parentDir
+  }
+
+  if (!entryPath) {
+    return candidates
+  }
+
+  currentDir = dirname(resolve(entryPath))
 
   for (let depth = 0; depth < 3; depth += 1) {
-    candidates.push(resolve(currentDir, CLAUDE_CONFIG_FILE_NAME))
+    addCandidate(resolve(currentDir, CLAUDE_CONFIG_FILE_NAME))
     const parentDir = dirname(currentDir)
     if (parentDir === currentDir) {
       break
@@ -600,6 +718,7 @@ function loadClaudeConfigEnvironmentVariables(): Record<string, string> {
     return {
       ...normalizeConfigProvider(parsed.provider),
       ...normalizeConfiguredModels(parsed.models, parsed.env),
+      ...normalizeDebugConfig(parsed),
       ...normalizeConfigEnv(parsed.env),
     }
   } catch (error) {

@@ -31,17 +31,17 @@ const LEVEL_ORDER: Record<DebugLogLevel, number> = {
  * include high-volume diagnostics (e.g. full statusLine command, shell, cwd,
  * stdout/stderr) that would otherwise drown out useful debug output.
  */
-export const getMinDebugLogLevel = memoize((): DebugLogLevel => {
+export function getMinDebugLogLevel(): DebugLogLevel {
   const raw = process.env.CLAUDE_CODE_DEBUG_LOG_LEVEL?.toLowerCase().trim()
   if (raw && Object.hasOwn(LEVEL_ORDER, raw)) {
     return raw as DebugLogLevel
   }
   return 'debug'
-})
+}
 
 let runtimeDebugEnabled = false
 
-export const isDebugMode = memoize((): boolean => {
+export function isDebugMode(): boolean {
   return (
     runtimeDebugEnabled ||
     isEnvTruthy(process.env.DEBUG) ||
@@ -54,7 +54,7 @@ export const isDebugMode = memoize((): boolean => {
     // --debug-file implicitly enables debug mode
     getDebugFilePath() !== null
   )
-})
+}
 
 /**
  * Enables debug logging mid-session (e.g. via /debug). Non-ants don't write
@@ -64,7 +64,12 @@ export const isDebugMode = memoize((): boolean => {
 export function enableDebugLogging(): boolean {
   const wasActive = isDebugMode() || process.env.USER_TYPE === 'ant'
   runtimeDebugEnabled = true
-  isDebugMode.cache.clear?.()
+  process.env.DEBUG ??= '1'
+  process.env.CLAUDE_CODE_FULL_SESSION_DEBUG ??= '1'
+  process.env.CLAUDE_CODE_DEBUG_LOG_LEVEL = 'verbose'
+  logForDebugging(`Debug logging enabled at ${getDebugLogPath()}`, {
+    level: 'debug',
+  })
   return wasActive
 }
 
@@ -228,11 +233,21 @@ export function logForDebugging(
 }
 
 export function getDebugLogPath(): string {
-  return (
-    getDebugFilePath() ??
-    process.env.CLAUDE_CODE_DEBUG_LOGS_DIR ??
-    join(getClaudeConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
-  )
+  const configuredDebugFile = getDebugFilePath()
+  if (configuredDebugFile) {
+    return configuredDebugFile
+  }
+
+  const configuredDebugLogsDir = process.env.CLAUDE_CODE_DEBUG_LOGS_DIR
+  if (configuredDebugLogsDir) {
+    const normalizedPath = configuredDebugLogsDir.normalize('NFC')
+    if (/\.(?:jsonl?|log|txt)$/i.test(normalizedPath)) {
+      return normalizedPath
+    }
+    return join(normalizedPath, `${getSessionId()}.txt`)
+  }
+
+  return join(getClaudeConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
 }
 
 /**

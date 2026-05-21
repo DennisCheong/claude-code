@@ -1,9 +1,9 @@
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import {
   createUserMessage,
-  REJECT_MESSAGE,
-  withMemoryCorrectionHint,
+  INTERRUPT_MESSAGE_FOR_TOOL_USE,
 } from 'src/utils/messages.js'
+import { logSessionDebugEvent } from '../../utils/sessionDebug.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { findToolByName, type Tools, type ToolUseContext } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
@@ -74,6 +74,12 @@ export class StreamingToolExecutor {
    * Add a tool to the execution queue. Will start executing immediately if conditions allow.
    */
   addTool(block: ToolUseBlock, assistantMessage: AssistantMessage): void {
+    logSessionDebugEvent('streaming_tool_queued', {
+      toolUseID: block.id,
+      toolName: block.name,
+      input: block.input,
+      assistantMessageUUID: assistantMessage.uuid,
+    })
     const toolDefinition = findToolByName(this.toolDefinitions, block.name)
     if (!toolDefinition) {
       this.tools.push({
@@ -156,18 +162,23 @@ export class StreamingToolExecutor {
     assistantMessage: AssistantMessage,
   ): Message {
     // For user interruptions (ESC to reject), use REJECT_MESSAGE so the UI shows
-    // "User rejected edit" instead of "Error editing file"
+    // an interrupt instead of claiming the user explicitly rejected a prompt
+    // that may never have been shown.
     if (reason === 'user_interrupted') {
+      logSessionDebugEvent('streaming_tool_interrupted', {
+        toolUseID: toolUseId,
+        reason,
+      })
       return createUserMessage({
         content: [
           {
             type: 'tool_result',
-            content: withMemoryCorrectionHint(REJECT_MESSAGE),
+            content: INTERRUPT_MESSAGE_FOR_TOOL_USE,
             is_error: true,
             tool_use_id: toolUseId,
           },
         ],
-        toolUseResult: 'User rejected tool use',
+        toolUseResult: INTERRUPT_MESSAGE_FOR_TOOL_USE,
         sourceToolAssistantUUID: assistantMessage.uuid,
       })
     }

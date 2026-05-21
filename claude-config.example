@@ -56,6 +56,11 @@
       "maxOutput": 32768
     }
   ],
+  "debug": {
+    "enabled": false,
+    "level": "verbose",
+    "logsDir": ""
+  },
   "env": {
     "ADMIN_USERS": "",
     "ALLOWED_ORIGINS": "",

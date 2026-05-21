@@ -110,6 +110,7 @@ import {
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
+import { logSessionDebugEvent } from './utils/sessionDebug.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const snipModule = feature('HISTORY_SNIP')
@@ -277,6 +278,14 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
+  logSessionDebugEvent('query_start', {
+    querySource,
+    maxTurns,
+    skipCacheWrite,
+    messageCount: params.messages.length,
+    messages: params.messages,
+    mainLoopModel: params.toolUseContext.options.mainLoopModel,
+  })
   const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
@@ -656,6 +665,17 @@ async function* queryLoop(
         try {
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
+          logSessionDebugEvent('model_request', {
+            querySource,
+            turnCount,
+            model: currentModel,
+            messageCount: messagesForQuery.length,
+            messages: messagesForQuery,
+            systemPrompt: fullSystemPrompt,
+            userContext,
+            systemContext,
+            toolNames: toolUseContext.options.tools.map(tool => tool.name),
+          })
           for await (const message of deps.callModel({
             messages: prependUserContext(messagesForQuery, userContext),
             systemPrompt: fullSystemPrompt,
@@ -824,12 +844,23 @@ async function* queryLoop(
               yield yieldMessage
             }
             if (message.type === 'assistant') {
+              logSessionDebugEvent('assistant_message', {
+                querySource,
+                turnCount,
+                message,
+              })
               assistantMessages.push(message)
 
               const msgToolUseBlocks = message.message.content.filter(
                 content => content.type === 'tool_use',
               ) as ToolUseBlock[]
               if (msgToolUseBlocks.length > 0) {
+                logSessionDebugEvent('assistant_tool_use_blocks', {
+                  querySource,
+                  turnCount,
+                  assistantMessageUUID: message.uuid,
+                  toolUseBlocks: msgToolUseBlocks,
+                })
                 toolUseBlocks.push(...msgToolUseBlocks)
                 needsFollowUp = true
               }
@@ -1361,6 +1392,12 @@ async function* queryLoop(
     let updatedToolUseContext = toolUseContext
 
     queryCheckpoint('query_tool_execution_start')
+    logSessionDebugEvent('tool_batch_start', {
+      querySource,
+      turnCount,
+      toolUseBlocks,
+      streamingToolExecution: !!streamingToolExecutor,
+    })
 
 
     if (streamingToolExecutor) {
@@ -1407,6 +1444,13 @@ async function* queryLoop(
       }
     }
     queryCheckpoint('query_tool_execution_end')
+    logSessionDebugEvent('tool_batch_end', {
+      querySource,
+      turnCount,
+      toolResultCount: toolResults.length,
+      toolResults,
+      shouldPreventContinuation,
+    })
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:

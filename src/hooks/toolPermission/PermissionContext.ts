@@ -24,6 +24,7 @@ import { setClassifierApproval } from '../../utils/classifierApprovals.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { executePermissionRequestHooks } from '../../utils/hooks.js'
 import {
+  INTERRUPT_MESSAGE_FOR_TOOL_USE,
   REJECT_MESSAGE,
   REJECT_MESSAGE_WITH_REASON_PREFIX,
   SUBAGENT_REJECT_MESSAGE,
@@ -157,12 +158,20 @@ function createPermissionContext(
       contentBlocks?: ContentBlockParam[],
     ): PermissionDecision {
       const sub = !!toolUseContext.agentId
-      const baseMessage = feedback
-        ? `${sub ? SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX : REJECT_MESSAGE_WITH_REASON_PREFIX}${feedback}`
+      const interruptedBeforeDecision =
+        isAbort && !feedback && !contentBlocks?.length
+      const baseMessage = interruptedBeforeDecision
+        ? INTERRUPT_MESSAGE_FOR_TOOL_USE
+        : feedback
+          ? `${sub ? SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX : REJECT_MESSAGE_WITH_REASON_PREFIX}${feedback}`
+          : sub
+            ? SUBAGENT_REJECT_MESSAGE
+            : REJECT_MESSAGE
+      const message = interruptedBeforeDecision
+        ? baseMessage
         : sub
-          ? SUBAGENT_REJECT_MESSAGE
-          : REJECT_MESSAGE
-      const message = sub ? baseMessage : withMemoryCorrectionHint(baseMessage)
+          ? baseMessage
+          : withMemoryCorrectionHint(baseMessage)
       if (isAbort || (!feedback && !contentBlocks?.length && !sub)) {
         logForDebugging(
           `Aborting: tool=${tool.name} isAbort=${isAbort} hasFeedback=${!!feedback} isSubagent=${sub}`,

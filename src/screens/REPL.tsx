@@ -2028,13 +2028,16 @@ export function REPL({
     // High priority dialogs (always show regardless of typing)
     if (isMessageSelectorVisible) return 'message-selector';
 
-    // Suppress interrupt dialogs while user is actively typing
-    if (isPromptInputActive) return undefined;
     if (sandboxPermissionRequestQueue[0]) return 'sandbox-permission';
+    if (toolUseConfirmQueue[0]) return 'tool-permission';
+
+    // Suppress lower-priority interrupt dialogs while user is actively typing.
+    // Tool permissions must not be suppressed here: hiding them leaves the
+    // session blocked and makes later cancellation look like a tool interrupt.
+    if (isPromptInputActive) return undefined;
 
     // Permission/interactive dialogs (show unless blocked by toolJSX)
     const allowDialogsWithAnimation = !toolJSX || toolJSX.shouldContinueAnimation;
-    if (allowDialogsWithAnimation && toolUseConfirmQueue[0]) return 'tool-permission';
     if (allowDialogsWithAnimation && promptQueue[0]) return 'prompt';
     // Worker sandbox permission prompts (network access) from swarm workers
     if (allowDialogsWithAnimation && workerSandboxPermissions.queue[0]) return 'worker-sandbox-permission';

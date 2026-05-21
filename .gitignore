@@ -9,3 +9,5 @@ claude-config.json
 llm-wiki/
 ssh-implementation.md
 .github/
+log/
+claude-test/
