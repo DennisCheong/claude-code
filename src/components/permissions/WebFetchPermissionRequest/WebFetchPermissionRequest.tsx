@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Box, Text, useTheme } from '../../../ink.js';
+import { useAppState } from '../../../state/AppState.js';
 import { WebFetchTool } from '../../../tools/WebFetchTool/WebFetchTool.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import { type OptionWithDescription, Select } from '../../CustomSelect/select.js';
@@ -8,7 +9,8 @@ import { type UnaryEvent, usePermissionRequestLogging } from '../hooks.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
-import { logUnaryPermissionEvent } from '../utils.js';
+import { BYPASS_PERMISSIONS_OPTION_LABEL, createBypassPermissionsModeUpdate, logUnaryPermissionEvent, shouldOfferBypassPermissionsOption } from '../utils.js';
+type WebFetchOptionValue = 'yes' | 'yes-dont-ask-again-domain' | 'yes-bypass-permissions' | 'no';
 function inputToPermissionRuleContent(input: {
   [k: string]: unknown;
 }): string {
@@ -62,6 +64,8 @@ export function WebFetchPermissionRequest(t0) {
   }
   const unaryEvent = t2;
   usePermissionRequestLogging(toolUseConfirm, unaryEvent);
+  const toolPermissionContext = useAppState(s => s.toolPermissionContext);
+  const showBypassPermissionsOption = shouldOfferBypassPermissionsOption(toolPermissionContext);
   let t3;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
     t3 = shouldShowAlwaysAllowOptions();
@@ -80,86 +84,68 @@ export function WebFetchPermissionRequest(t0) {
   } else {
     t4 = $[4];
   }
-  let result;
-  if ($[5] !== hostname) {
-    result = [t4];
+  const options = useMemo((): OptionWithDescription<WebFetchOptionValue>[] => {
+    const result: OptionWithDescription<WebFetchOptionValue>[] = [t4];
     if (showAlwaysAllowOptions) {
-      const t5 = <Text bold={true}>{hostname}</Text>;
-      let t6;
-      if ($[7] !== t5) {
-        t6 = {
-          label: <Text>Yes, and don't ask again for {t5}</Text>,
-          value: "yes-dont-ask-again-domain"
-        };
-        $[7] = t5;
-        $[8] = t6;
-      } else {
-        t6 = $[8];
-      }
-      result.push(t6);
+      result.push({
+        label: <Text>Yes, and don't ask again for <Text bold={true}>{hostname}</Text></Text>,
+        value: "yes-dont-ask-again-domain"
+      });
     }
-    let t5;
-    if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-      t5 = {
-        label: <Text>No, and tell Claude what to do differently <Text bold={true}>(esc)</Text></Text>,
-        value: "no"
-      };
-      $[9] = t5;
-    } else {
-      t5 = $[9];
+    if (showBypassPermissionsOption) {
+      result.push({
+        label: BYPASS_PERMISSIONS_OPTION_LABEL,
+        value: "yes-bypass-permissions"
+      });
     }
-    result.push(t5);
-    $[5] = hostname;
-    $[6] = result;
-  } else {
-    result = $[6];
-  }
-  const options = result;
-  let t5;
-  if ($[10] !== onDone || $[11] !== onReject || $[12] !== toolUseConfirm) {
-    t5 = function onChange(newValue) {
-      bb8: switch (newValue) {
-        case "yes":
-          {
-            logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "accept");
-            toolUseConfirm.onAllow(toolUseConfirm.input, []);
-            onDone();
-            break bb8;
-          }
-        case "yes-dont-ask-again-domain":
-          {
-            logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "accept");
-            const ruleContent = inputToPermissionRuleContent(toolUseConfirm.input);
-            const ruleValue = {
-              toolName: toolUseConfirm.tool.name,
-              ruleContent
-            };
-            toolUseConfirm.onAllow(toolUseConfirm.input, [{
-              type: "addRules",
-              rules: [ruleValue],
-              behavior: "allow",
-              destination: "localSettings"
-            }]);
-            onDone();
-            break bb8;
-          }
-        case "no":
-          {
-            logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "reject");
-            toolUseConfirm.onReject();
-            onReject();
-            onDone();
-          }
-      }
-    };
-    $[10] = onDone;
-    $[11] = onReject;
-    $[12] = toolUseConfirm;
-    $[13] = t5;
-  } else {
-    t5 = $[13];
-  }
-  const onChange = t5;
+    result.push({
+      label: <Text>No, and tell Claude what to do differently <Text bold={true}>(esc)</Text></Text>,
+      value: "no"
+    });
+    return result;
+  }, [t4, hostname, showAlwaysAllowOptions, showBypassPermissionsOption]);
+  const onChange = useCallback((newValue: WebFetchOptionValue) => {
+    switch (newValue) {
+      case "yes":
+        {
+          logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "accept");
+          toolUseConfirm.onAllow(toolUseConfirm.input, []);
+          onDone();
+          break;
+        }
+      case "yes-dont-ask-again-domain":
+        {
+          logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "accept");
+          const ruleContent = inputToPermissionRuleContent(toolUseConfirm.input);
+          const ruleValue = {
+            toolName: toolUseConfirm.tool.name,
+            ruleContent
+          };
+          toolUseConfirm.onAllow(toolUseConfirm.input, [{
+            type: "addRules",
+            rules: [ruleValue],
+            behavior: "allow",
+            destination: "localSettings"
+          }]);
+          onDone();
+          break;
+        }
+      case "yes-bypass-permissions":
+        {
+          logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "accept");
+          toolUseConfirm.onAllow(toolUseConfirm.input, [createBypassPermissionsModeUpdate()]);
+          onDone();
+          break;
+        }
+      case "no":
+        {
+          logUnaryPermissionEvent("tool_use_single", toolUseConfirm, "reject");
+          toolUseConfirm.onReject();
+          onReject();
+          onDone();
+        }
+    }
+  }, [toolUseConfirm, onDone, onReject]);
   let t6;
   if ($[14] !== theme || $[15] !== toolUseConfirm.input || $[16] !== verbose) {
     t6 = WebFetchTool.renderToolUseMessage(toolUseConfirm.input as {

@@ -115,9 +115,9 @@ export function useFilePermissionDialog<T extends ToolInput>({
         feedback,
         hasFeedback: !!feedback,
         enteredFeedbackMode:
-          option.type === 'accept-once'
-            ? yesFeedbackModeEntered
-            : noFeedbackModeEntered,
+          option.type === 'reject'
+            ? noFeedbackModeEntered
+            : yesFeedbackModeEntered,
         scope: option.type === 'accept-session' ? option.scope : undefined,
       })
     },

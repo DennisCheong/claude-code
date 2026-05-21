@@ -29,7 +29,7 @@ import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { SedEditPermissionRequest } from '../SedEditPermissionRequest/SedEditPermissionRequest.js';
 import { useShellPermissionFeedback } from '../useShellPermissionFeedback.js';
-import { logUnaryPermissionEvent } from '../utils.js';
+import { createBypassPermissionsModeUpdate, logUnaryPermissionEvent, shouldOfferBypassPermissionsOption } from '../utils.js';
 import { bashToolUseOptions } from './bashToolUseOptions.js';
 const CHECKING_TEXT = 'Attempting to auto-approve\u2026';
 
@@ -286,6 +286,7 @@ function BashPermissionRequestInner({
   }), []);
   usePermissionRequestLogging(toolUseConfirm, unaryEvent);
   const existingAllowDescriptions = useMemo(() => getBashPromptAllowDescriptions(toolPermissionContext), [toolPermissionContext]);
+  const showBypassPermissionsOption = shouldOfferBypassPermissionsOption(toolPermissionContext);
   const options = useMemo(() => bashToolUseOptions({
     suggestions: toolUseConfirm.permissionResult.behavior === 'ask' ? toolUseConfirm.permissionResult.suggestions : undefined,
     decisionReason: toolUseConfirm.permissionResult.decisionReason,
@@ -297,9 +298,10 @@ function BashPermissionRequestInner({
     existingAllowDescriptions,
     yesInputMode,
     noInputMode,
+    showBypassPermissionsOption,
     editablePrefix,
     onEditablePrefixChange
-  }), [toolUseConfirm, classifierDescription, initialClassifierDescriptionEmpty, existingAllowDescriptions, yesInputMode, noInputMode, editablePrefix, onEditablePrefixChange]);
+  }), [toolUseConfirm, classifierDescription, initialClassifierDescriptionEmpty, existingAllowDescriptions, yesInputMode, noInputMode, showBypassPermissionsOption, editablePrefix, onEditablePrefixChange]);
 
   // Toggle permission debug info with keybinding
   const handleToggleDebug = useCallback(() => {
@@ -323,7 +325,12 @@ function BashPermissionRequestInner({
       yes: 1,
       'yes-apply-suggestions': 2,
       'yes-prefix-edited': 2,
-      no: 3
+      ...(showBypassPermissionsOption ? {
+        'yes-bypass-permissions': 3,
+        no: 4
+      } : {
+        no: 3
+      })
     };
     if (feature('BASH_CLASSIFIER')) {
       optionIndex = {
@@ -331,7 +338,12 @@ function BashPermissionRequestInner({
         'yes-apply-suggestions': 2,
         'yes-prefix-edited': 2,
         'yes-classifier-reviewed': 3,
-        no: 4
+        ...(showBypassPermissionsOption ? {
+          'yes-bypass-permissions': 4,
+          no: 5
+        } : {
+          no: 4
+        })
       };
     }
     logEvent('tengu_permission_request_option_selected', {
@@ -402,6 +414,13 @@ function BashPermissionRequestInner({
           // Extract suggestions if present (works for both 'ask' and 'passthrough' behaviors)
           const permissionUpdates_0 = 'suggestions' in toolUseConfirm.permissionResult ? toolUseConfirm.permissionResult.suggestions || [] : [];
           toolUseConfirm.onAllow(toolUseConfirm.input, permissionUpdates_0);
+          onDone();
+          break;
+        }
+      case 'yes-bypass-permissions':
+        {
+          logUnaryPermissionEvent('tool_use_single', toolUseConfirm, 'accept');
+          toolUseConfirm.onAllow(toolUseConfirm.input, [createBypassPermissionsModeUpdate()]);
           onDone();
           break;
         }

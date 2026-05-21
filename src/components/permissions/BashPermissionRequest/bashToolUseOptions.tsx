@@ -6,7 +6,8 @@ import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpda
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { generateShellSuggestionsLabel } from '../shellPermissionHelpers.js';
-export type BashToolUseOption = 'yes' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'yes-classifier-reviewed' | 'no';
+import { BYPASS_PERMISSIONS_OPTION_LABEL } from '../utils.js';
+export type BashToolUseOption = 'yes' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'yes-classifier-reviewed' | 'yes-bypass-permissions' | 'no';
 
 /**
  * Check if a description already exists in the allow list.
@@ -39,6 +40,7 @@ export function bashToolUseOptions({
   existingAllowDescriptions = [],
   yesInputMode = false,
   noInputMode = false,
+  showBypassPermissionsOption = false,
   editablePrefix,
   onEditablePrefixChange
 }: {
@@ -53,6 +55,7 @@ export function bashToolUseOptions({
   existingAllowDescriptions?: string[];
   yesInputMode?: boolean;
   noInputMode?: boolean;
+  showBypassPermissionsOption?: boolean;
   /** Editable prefix rule content (e.g., "npm run:*"). When set, replaces Haiku-based suggestions. */
   editablePrefix?: string;
   /** Callback when the user edits the prefix value. */
@@ -126,6 +129,12 @@ export function bashToolUseOptions({
         resetCursorOnUpdate: true
       });
     }
+  }
+  if (showBypassPermissionsOption) {
+    options.push({
+      label: BYPASS_PERMISSIONS_OPTION_LABEL,
+      value: 'yes-bypass-permissions'
+    });
   }
   if (noInputMode) {
     options.push({

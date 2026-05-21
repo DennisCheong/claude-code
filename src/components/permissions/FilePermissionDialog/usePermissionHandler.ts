@@ -17,6 +17,7 @@ import {
   logUnaryEvent,
 } from '../../../utils/unaryLogging.js'
 import type { ToolUseConfirm } from '../PermissionRequest.js'
+import { createBypassPermissionsModeUpdate } from '../utils.js'
 import type {
   FileOperationType,
   PermissionOption,
@@ -138,6 +139,20 @@ function handleAcceptSession(
   toolUseConfirm.onAllow(toolUseConfirm.input, suggestions)
 }
 
+function handleAcceptBypassPermissions(
+  params: PermissionHandlerParams,
+): void {
+  const { messageId, toolUseConfirm, onDone, completionType, languageName } =
+    params
+
+  logPermissionEvent('accept', completionType, languageName, messageId)
+
+  onDone()
+  toolUseConfirm.onAllow(toolUseConfirm.input, [
+    createBypassPermissionsModeUpdate(),
+  ])
+}
+
 function handleReject(
   params: PermissionHandlerParams,
   options?: PermissionHandlerOptions,
@@ -181,6 +196,7 @@ export const PERMISSION_HANDLERS: Record<
 > = {
   'accept-once': handleAcceptOnce,
   'accept-session': handleAcceptSession,
+  'accept-bypass-permissions': handleAcceptBypassPermissions,
   reject: handleReject,
 }
 

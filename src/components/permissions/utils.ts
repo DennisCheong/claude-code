@@ -1,5 +1,7 @@
 import { getHostPlatformForAnalytics } from '../../utils/env.js'
+import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js'
 import { type CompletionType, logUnaryEvent } from '../../utils/unaryLogging.js'
+import type { ToolPermissionContext } from '../../Tool.js'
 import type { ToolUseConfirm } from './PermissionRequest.js'
 
 export function logUnaryPermissionEvent(
@@ -22,5 +24,25 @@ export function logUnaryPermissionEvent(
       hasFeedback: hasFeedback ?? false,
     },
   })
+}
+
+export const BYPASS_PERMISSIONS_OPTION_LABEL =
+  'Yes, and dangerously skip permissions for this session'
+
+export function createBypassPermissionsModeUpdate(): PermissionUpdate {
+  return {
+    type: 'setMode',
+    mode: 'bypassPermissions',
+    destination: 'session',
+  }
+}
+
+export function shouldOfferBypassPermissionsOption(
+  toolPermissionContext: ToolPermissionContext,
+): boolean {
+  return (
+    toolPermissionContext.isBypassPermissionsModeAvailable &&
+    toolPermissionContext.mode !== 'bypassPermissions'
+  )
 }
 

@@ -8,6 +8,7 @@ import type { ToolPermissionContext } from '../../../Tool.js';
 import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
 import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
+import { BYPASS_PERMISSIONS_OPTION_LABEL, shouldOfferBypassPermissionsOption } from '../utils.js';
 /**
  * Check if a path is within the project's .claude/ folder.
  * This is used to determine whether to show the special ".claude folder" permission option.
@@ -43,6 +44,8 @@ export type PermissionOption = {
 } | {
   type: 'accept-session';
   scope?: 'claude-folder' | 'global-claude-folder';
+} | {
+  type: 'accept-bypass-permissions';
 } | {
   type: 'reject';
 };
@@ -145,6 +148,15 @@ export function getFilePermissionOptions({
       value: 'yes-session',
       option: {
         type: 'accept-session'
+      }
+    });
+  }
+  if (shouldOfferBypassPermissionsOption(toolPermissionContext)) {
+    options.push({
+      label: BYPASS_PERMISSIONS_OPTION_LABEL,
+      value: 'yes-bypass-permissions',
+      option: {
+        type: 'accept-bypass-permissions'
       }
     });
   }

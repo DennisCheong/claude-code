@@ -3,6 +3,7 @@ import React, { useCallback, useMemo } from 'react';
 import { getOriginalCwd } from '../../bootstrap/state.js';
 import { Box, Text, useTheme } from '../../ink.js';
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js';
+import { useAppState } from '../../state/AppState.js';
 import { env } from '../../utils/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../utils/permissions/permissionsLoader.js';
 import { truncateToLines } from '../../utils/stringUtils.js';
@@ -12,7 +13,8 @@ import { PermissionDialog } from './PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from './PermissionPrompt.js';
 import type { PermissionRequestProps } from './PermissionRequest.js';
 import { PermissionRuleExplanation } from './PermissionRuleExplanation.js';
-type FallbackOptionValue = 'yes' | 'yes-dont-ask-again' | 'no';
+import { BYPASS_PERMISSIONS_OPTION_LABEL, createBypassPermissionsModeUpdate, shouldOfferBypassPermissionsOption } from './utils.js';
+type FallbackOptionValue = 'yes' | 'yes-dont-ask-again' | 'yes-bypass-permissions' | 'no';
 export function FallbackPermissionRequest(t0) {
   const $ = _c(58);
   const {
@@ -48,72 +50,79 @@ export function FallbackPermissionRequest(t0) {
   }
   const unaryEvent = t2;
   usePermissionRequestLogging(toolUseConfirm, unaryEvent);
-  let t3;
-  if ($[5] !== onDone || $[6] !== onReject || $[7] !== toolUseConfirm) {
-    t3 = (value, feedback) => {
-      bb8: switch (value) {
-        case "yes":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "accept",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onAllow(toolUseConfirm.input, [], feedback);
-            onDone();
-            break bb8;
-          }
-        case "yes-dont-ask-again":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "accept",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onAllow(toolUseConfirm.input, [{
-              type: "addRules",
-              rules: [{
-                toolName: toolUseConfirm.tool.name
-              }],
-              behavior: "allow",
-              destination: "localSettings"
-            }]);
-            onDone();
-            break bb8;
-          }
-        case "no":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "reject",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onReject(feedback);
-            onReject();
-            onDone();
-          }
-      }
-    };
-    $[5] = onDone;
-    $[6] = onReject;
-    $[7] = toolUseConfirm;
-    $[8] = t3;
-  } else {
-    t3 = $[8];
-  }
-  const handleSelect = t3;
+  const toolPermissionContext = useAppState(s => s.toolPermissionContext);
+  const showBypassPermissionsOption = shouldOfferBypassPermissionsOption(toolPermissionContext);
+  const handleSelect = useCallback((value, feedback) => {
+    switch (value) {
+      case "yes":
+        {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform
+            }
+          });
+          toolUseConfirm.onAllow(toolUseConfirm.input, [], feedback);
+          onDone();
+          break;
+        }
+      case "yes-dont-ask-again":
+        {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform
+            }
+          });
+          toolUseConfirm.onAllow(toolUseConfirm.input, [{
+            type: "addRules",
+            rules: [{
+              toolName: toolUseConfirm.tool.name
+            }],
+            behavior: "allow",
+            destination: "localSettings"
+          }]);
+          onDone();
+          break;
+        }
+      case "yes-bypass-permissions":
+        {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform
+            }
+          });
+          toolUseConfirm.onAllow(toolUseConfirm.input, [createBypassPermissionsModeUpdate()]);
+          onDone();
+          break;
+        }
+      case "no":
+        {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "reject",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform
+            }
+          });
+          toolUseConfirm.onReject(feedback);
+          onReject();
+          onDone();
+        }
+    }
+  }, [toolUseConfirm, onDone, onReject]);
   let t4;
   if ($[9] !== onDone || $[10] !== onReject || $[11] !== toolUseConfirm) {
     t4 = () => {
@@ -154,64 +163,35 @@ export function FallbackPermissionRequest(t0) {
     t6 = $[14];
   }
   const showAlwaysAllowOptions = t6;
-  let t7;
-  if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = {
+  const options = useMemo(() => {
+    const result: PermissionPromptOption<FallbackOptionValue>[] = [{
       label: "Yes",
       value: "yes",
       feedbackConfig: {
         type: "accept"
       }
-    };
-    $[15] = t7;
-  } else {
-    t7 = $[15];
-  }
-  let result;
-  if ($[16] !== userFacingName) {
-    result = [t7];
+    }];
     if (showAlwaysAllowOptions) {
-      const t8 = <Text bold={true}>{userFacingName}</Text>;
-      let t9;
-      if ($[18] === Symbol.for("react.memo_cache_sentinel")) {
-        t9 = <Text bold={true}>{originalCwd}</Text>;
-        $[18] = t9;
-      } else {
-        t9 = $[18];
-      }
-      let t10;
-      if ($[19] !== t8) {
-        t10 = {
-          label: <Text>Yes, and don't ask again for {t8}{" "}commands in {t9}</Text>,
-          value: "yes-dont-ask-again"
-        };
-        $[19] = t8;
-        $[20] = t10;
-      } else {
-        t10 = $[20];
-      }
-      result.push(t10);
+      result.push({
+        label: <Text>Yes, and don't ask again for <Text bold={true}>{userFacingName}</Text>{" "}commands in <Text bold={true}>{originalCwd}</Text></Text>,
+        value: "yes-dont-ask-again"
+      });
     }
-    let t8;
-    if ($[21] === Symbol.for("react.memo_cache_sentinel")) {
-      t8 = {
-        label: "No",
-        value: "no",
-        feedbackConfig: {
-          type: "reject"
-        }
-      };
-      $[21] = t8;
-    } else {
-      t8 = $[21];
+    if (showBypassPermissionsOption) {
+      result.push({
+        label: BYPASS_PERMISSIONS_OPTION_LABEL,
+        value: "yes-bypass-permissions"
+      });
     }
-    result.push(t8);
-    $[16] = userFacingName;
-    $[17] = result;
-  } else {
-    result = $[17];
-  }
-  const options = result;
+    result.push({
+      label: "No",
+      value: "no",
+      feedbackConfig: {
+        type: "reject"
+      }
+    });
+    return result;
+  }, [userFacingName, originalCwd, showAlwaysAllowOptions, showBypassPermissionsOption]);
   let t8;
   if ($[22] !== toolUseConfirm.tool.name) {
     t8 = sanitizeToolNameForAnalytics(toolUseConfirm.tool.name);

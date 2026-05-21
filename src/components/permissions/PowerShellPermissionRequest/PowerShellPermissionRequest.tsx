@@ -4,6 +4,7 @@ import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../../services/analytics/index.js';
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js';
+import { useAppState } from '../../../state/AppState.js';
 import { getDestructiveCommandWarning } from '../../../tools/PowerShellTool/destructiveCommandWarning.js';
 import { PowerShellTool } from '../../../tools/PowerShellTool/PowerShellTool.js';
 import { isAllowlistedCommand } from '../../../tools/PowerShellTool/readOnlyValidation.js';
@@ -17,7 +18,7 @@ import { PermissionExplainerContent, usePermissionExplainerUI } from '../Permiss
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { useShellPermissionFeedback } from '../useShellPermissionFeedback.js';
-import { logUnaryPermissionEvent } from '../utils.js';
+import { createBypassPermissionsModeUpdate, logUnaryPermissionEvent, shouldOfferBypassPermissionsOption } from '../utils.js';
 import { powershellToolUseOptions } from './powershellToolUseOptions.js';
 export function PowerShellPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const {
@@ -32,6 +33,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
     description
   } = PowerShellTool.inputSchema.parse(toolUseConfirm.input);
   const [theme] = useTheme();
+  const toolPermissionContext = useAppState(s => s.toolPermissionContext);
   const explainerState = usePermissionExplainerUI({
     toolName: toolUseConfirm.tool.name,
     toolInput: toolUseConfirm.input,
@@ -97,15 +99,17 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
     language_name: 'none'
   }), []);
   usePermissionRequestLogging(toolUseConfirm, unaryEvent);
+  const showBypassPermissionsOption = shouldOfferBypassPermissionsOption(toolPermissionContext);
   const options = useMemo(() => powershellToolUseOptions({
     suggestions: toolUseConfirm.permissionResult.behavior === 'ask' ? toolUseConfirm.permissionResult.suggestions : undefined,
     onRejectFeedbackChange: setRejectFeedback,
     onAcceptFeedbackChange: setAcceptFeedback,
     yesInputMode,
     noInputMode,
+    showBypassPermissionsOption,
     editablePrefix,
     onEditablePrefixChange
-  }), [toolUseConfirm, yesInputMode, noInputMode, editablePrefix, onEditablePrefixChange]);
+  }), [toolUseConfirm, yesInputMode, noInputMode, showBypassPermissionsOption, editablePrefix, onEditablePrefixChange]);
 
   // Toggle permission debug info with keybinding
   const handleToggleDebug = useCallback(() => {
@@ -120,7 +124,12 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
       yes: 1,
       'yes-apply-suggestions': 2,
       'yes-prefix-edited': 2,
-      no: 3
+      ...(showBypassPermissionsOption ? {
+        'yes-bypass-permissions': 3,
+        no: 4
+      } : {
+        no: 3
+      })
     };
     logEvent('tengu_permission_request_option_selected', {
       option_index: optionIndex[value],
@@ -170,6 +179,13 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
           // Extract suggestions if present (works for both 'ask' and 'passthrough' behaviors)
           const permissionUpdates = 'suggestions' in toolUseConfirm.permissionResult ? toolUseConfirm.permissionResult.suggestions || [] : [];
           toolUseConfirm.onAllow(toolUseConfirm.input, permissionUpdates);
+          onDone();
+          break;
+        }
+      case 'yes-bypass-permissions':
+        {
+          logUnaryPermissionEvent('tool_use_single', toolUseConfirm, 'accept');
+          toolUseConfirm.onAllow(toolUseConfirm.input, [createBypassPermissionsModeUpdate()]);
           onDone();
           break;
         }

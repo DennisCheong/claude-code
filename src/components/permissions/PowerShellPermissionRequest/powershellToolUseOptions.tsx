@@ -3,13 +3,15 @@ import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpda
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { generateShellSuggestionsLabel } from '../shellPermissionHelpers.js';
-export type PowerShellToolUseOption = 'yes' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'no';
+import { BYPASS_PERMISSIONS_OPTION_LABEL } from '../utils.js';
+export type PowerShellToolUseOption = 'yes' | 'yes-apply-suggestions' | 'yes-prefix-edited' | 'yes-bypass-permissions' | 'no';
 export function powershellToolUseOptions({
   suggestions = [],
   onRejectFeedbackChange,
   onAcceptFeedbackChange,
   yesInputMode = false,
   noInputMode = false,
+  showBypassPermissionsOption = false,
   editablePrefix,
   onEditablePrefixChange
 }: {
@@ -18,6 +20,7 @@ export function powershellToolUseOptions({
   onAcceptFeedbackChange: (value: string) => void;
   yesInputMode?: boolean;
   noInputMode?: boolean;
+  showBypassPermissionsOption?: boolean;
   editablePrefix?: string;
   onEditablePrefixChange?: (value: string) => void;
 }): OptionWithDescription<PowerShellToolUseOption>[] {
@@ -70,6 +73,12 @@ export function powershellToolUseOptions({
         });
       }
     }
+  }
+  if (showBypassPermissionsOption) {
+    options.push({
+      label: BYPASS_PERMISSIONS_OPTION_LABEL,
+      value: 'yes-bypass-permissions'
+    });
   }
   if (noInputMode) {
     options.push({
