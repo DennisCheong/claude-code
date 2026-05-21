@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createOpenAICompatibleMessage } from './openaiCompatible.js'
+import {
+  createOpenAICompatibleMessage,
+  createOpenAICompatibleStream,
+} from './openaiCompatible.js'
 import { normalizeOpenAICompatibleReasoning } from './openaiCompatibleReasoning.js'
 
 describe('normalizeOpenAICompatibleReasoning', () => {
@@ -108,5 +111,119 @@ describe('createOpenAICompatibleMessage', () => {
           '<command-message>init</command-message>\n<command-name>/init</command-name>\nSet up a minimal CLAUDE.md',
       },
     ])
+  })
+})
+
+describe('createOpenAICompatibleStream', () => {
+  it('does not emit visible thinking blocks for null or empty reasoning deltas', async () => {
+    const encoder = new TextEncoder()
+    const sseBody = [
+      {
+        id: 'chatcmpl_1',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: 'assistant',
+              content: null,
+              reasoning_content: null,
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl_1',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              content: null,
+              reasoning_content: '',
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl_1',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              content: 'hello world',
+              reasoning_content: null,
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl_1',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              content: '',
+              reasoning_content: null,
+            },
+            finish_reason: 'stop',
+          },
+        ],
+      },
+    ]
+      .map(chunk => `data: ${JSON.stringify(chunk)}\n\n`)
+      .concat('data: [DONE]\n\n')
+      .join('')
+
+    const result = await createOpenAICompatibleStream(
+      {
+        model: 'qwen3.6-plus',
+        messages: [{ role: 'user', content: 'Say hello world' }],
+        max_tokens: 32,
+      },
+      {
+        apiKey: 'test-key',
+        fetchOverride: async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(encoder.encode(sseBody))
+                controller.close()
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            },
+          ),
+      },
+    )
+
+    const events: Array<{ type: string; [key: string]: unknown }> = []
+    for await (const event of result.data) {
+      events.push(event as { type: string; [key: string]: unknown })
+    }
+
+    const thinkingStarts = events.filter(
+      event =>
+        event.type === 'content_block_start' &&
+        (event.content_block as { type?: string } | undefined)?.type === 'thinking',
+    )
+    assert.equal(thinkingStarts.length, 0)
+
+    const textDeltas = events.filter(
+      event =>
+        event.type === 'content_block_delta' &&
+        (event.delta as { type?: string } | undefined)?.type === 'text_delta',
+    )
+    assert.deepEqual(
+      textDeltas.map(event => (event.delta as { text?: string }).text),
+      ['hello world'],
+    )
   })
 })
