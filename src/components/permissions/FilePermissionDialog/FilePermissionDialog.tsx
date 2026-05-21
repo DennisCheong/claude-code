@@ -113,11 +113,13 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
   // Parse input using the provided parser
   const parsedInput = parseInput(toolUseConfirm.input);
 
-  // Set up IDE diff support if enabled. Memoized: getConfig may do disk I/O
-  // (FileWrite's getConfig calls readFileSync for the old-content diff).
-  // Keyed on the raw input — parseInput is a pure Zod parse whose result
-  // depends only on toolUseConfirm.input.
-  const ideDiffConfig = useMemo(() => ideDiffSupport ? ideDiffSupport.getConfig(parseInput(toolUseConfirm.input)) : null, [ideDiffSupport, toolUseConfirm.input]);
+  // Set up IDE diff support if enabled. New-file creates stay in the terminal
+  // prompt because IDE diff needs an existing file to diff against.
+  const canUseIdeDiff = operationType !== 'create' && ideDiffSupport != null;
+  // Memoized: getConfig may do disk I/O (FileWrite's getConfig calls
+  // readFileSync for the old-content diff). Keyed on the raw input — parseInput
+  // is a pure Zod parse whose result depends only on toolUseConfirm.input.
+  const ideDiffConfig = useMemo(() => canUseIdeDiff ? ideDiffSupport.getConfig(parseInput(toolUseConfirm.input)) : null, [canUseIdeDiff, ideDiffSupport, toolUseConfirm.input]);
 
   // Create diff params based on whether IDE diff is available
   const diffParams = ideDiffConfig ? {

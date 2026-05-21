@@ -138,7 +138,7 @@ export function FileWritePermissionRequest(props) {
   }
   let t13;
   if ($[19] !== file_path || $[20] !== props.onDone || $[21] !== props.onReject || $[22] !== props.toolUseConfirm || $[23] !== props.toolUseContext || $[24] !== props.workerBadge || $[25] !== t11 || $[26] !== t12 || $[27] !== t7 || $[28] !== t8) {
-    t13 = <FilePermissionDialog toolUseConfirm={t2} toolUseContext={t3} onDone={t4} onReject={t5} workerBadge={t6} title={t7} subtitle={t8} question={t11} content={t12} path={file_path} completionType="write_file_single" parseInput={parseInput} ideDiffSupport={ideDiffSupport} />;
+    t13 = <FilePermissionDialog toolUseConfirm={t2} toolUseContext={t3} onDone={t4} onReject={t5} workerBadge={t6} title={t7} subtitle={t8} question={t11} content={t12} path={file_path} completionType="write_file_single" parseInput={parseInput} operationType={fileExists ? "write" : "create"} ideDiffSupport={fileExists ? ideDiffSupport : undefined} />;
     $[19] = file_path;
     $[20] = props.onDone;
     $[21] = props.onReject;

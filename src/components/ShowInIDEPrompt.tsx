@@ -2,11 +2,13 @@ import { c as _c } from "react/compiler-runtime";
 import { basename, relative } from 'path';
 import React from 'react';
 import { Box, Text } from '../ink.js';
+import { useAppState } from '../state/AppState.js';
 import { getCwd } from '../utils/cwd.js';
 import { isSupportedVSCodeTerminal } from '../utils/ide.js';
 import { Select } from './CustomSelect/index.js';
 import { Pane } from './design-system/Pane.js';
 import type { PermissionOption, PermissionOptionWithLabel } from './permissions/FilePermissionDialog/permissionOptions.js';
+import { BYPASS_PERMISSIONS_OPTION_LABEL, shouldOfferBypassPermissionsOption } from './permissions/utils.js';
 type Props<A> = {
   filePath: string;
   input: A;
@@ -39,6 +41,14 @@ export function ShowInIDEPrompt(t0) {
     yesInputMode,
     noInputMode
   } = t0;
+  const toolPermissionContext = useAppState(s => s.toolPermissionContext);
+  const displayOptions = shouldOfferBypassPermissionsOption(toolPermissionContext) && !options.some(opt => opt.option.type === "accept-bypass-permissions") ? [...options, {
+    label: BYPASS_PERMISSIONS_OPTION_LABEL,
+    value: "yes-bypass-permissions",
+    option: {
+      type: "accept-bypass-permissions"
+    }
+  }] : options;
   let t1;
   if ($[0] !== ideName) {
     t1 = <Text bold={true} color="permission">Opened changes in {ideName} ⧉</Text>;
@@ -79,9 +89,9 @@ export function ShowInIDEPrompt(t0) {
     t5 = $[8];
   }
   let t6;
-  if ($[9] !== acceptFeedback || $[10] !== input || $[11] !== onChange || $[12] !== options || $[13] !== rejectFeedback) {
+  if ($[9] !== acceptFeedback || $[10] !== displayOptions || $[11] !== input || $[12] !== onChange || $[13] !== rejectFeedback) {
     t6 = value => {
-      const selected = options.find(opt => opt.value === value);
+      const selected = displayOptions.find(opt => opt.value === value);
       if (selected) {
         if (selected.option.type === "reject") {
           const trimmedFeedback = rejectFeedback.trim();
@@ -97,9 +107,9 @@ export function ShowInIDEPrompt(t0) {
       }
     };
     $[9] = acceptFeedback;
-    $[10] = input;
-    $[11] = onChange;
-    $[12] = options;
+    $[10] = displayOptions;
+    $[11] = input;
+    $[12] = onChange;
     $[13] = rejectFeedback;
     $[14] = t6;
   } else {
@@ -125,10 +135,10 @@ export function ShowInIDEPrompt(t0) {
     t8 = $[19];
   }
   let t9;
-  if ($[20] !== onInputModeToggle || $[21] !== options || $[22] !== t6 || $[23] !== t7 || $[24] !== t8) {
-    t9 = <Select options={options} inlineDescriptions={true} onChange={t6} onCancel={t7} onFocus={t8} onInputModeToggle={onInputModeToggle} />;
-    $[20] = onInputModeToggle;
-    $[21] = options;
+  if ($[20] !== displayOptions || $[21] !== onInputModeToggle || $[22] !== t6 || $[23] !== t7 || $[24] !== t8) {
+    t9 = <Select options={displayOptions} inlineDescriptions={true} onChange={t6} onCancel={t7} onFocus={t8} onInputModeToggle={onInputModeToggle} />;
+    $[20] = displayOptions;
+    $[21] = onInputModeToggle;
     $[22] = t6;
     $[23] = t7;
     $[24] = t8;
