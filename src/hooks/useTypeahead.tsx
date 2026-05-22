@@ -752,10 +752,6 @@ export function useTypeahead({
 
     if (remoteSession && remotePathMatch) {
       const searchToken = remotePathMatch[2] ?? '';
-      if (!searchToken) {
-        clearSuggestions();
-        return;
-      }
       const remotePathTokenKey = `$${searchToken}`;
       latestPathTokenRef.current = remotePathTokenKey;
       debouncedFetchFileSuggestions.cancel();

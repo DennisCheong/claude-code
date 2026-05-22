@@ -53,7 +53,7 @@ type Props = {
   isNarrow?: boolean;
 };
 export function Notifications(t0) {
-  const $ = _c(34);
+  const $ = _c(35);
   const {
     apiKeyStatus,
     autoUpdaterResult,

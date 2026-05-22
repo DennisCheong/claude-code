@@ -21,7 +21,7 @@ import {
 } from '../constants/apiLimits.js'
 import { hasBinaryExtension } from '../constants/files.js'
 import { FileTooLargeError, readFileInRange } from './readFileInRange.js'
-import { expandPath } from './path.js'
+import { expandPath, isPathWithin } from './path.js'
 import { countCharInString } from './stringUtils.js'
 import { count, uniq } from './array.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -2008,11 +2008,16 @@ async function processAtMentionedFiles(
   if (files.length === 0) return []
 
   const appState = toolUseContext.getAppState()
+  const projectRoot = getProjectRoot()
   const results = await Promise.all(
     files.map(async file => {
       try {
         const { filename, lineStart, lineEnd } = parseAtMentionedFileLines(file)
-        const absoluteFilename = expandPath(filename)
+        const absoluteFilename = expandPath(filename, projectRoot)
+
+        if (!isPathWithin(projectRoot, absoluteFilename)) {
+          return null
+        }
 
         if (
           isFileReadDenied(absoluteFilename, appState.toolPermissionContext)
@@ -2042,7 +2047,7 @@ async function processAtMentionedFiles(
                 type: 'directory' as const,
                 path: absoluteFilename,
                 content: stdout,
-                displayPath: relative(getCwd(), absoluteFilename),
+                displayPath: relative(projectRoot, absoluteFilename),
               }
             } catch {
               return null

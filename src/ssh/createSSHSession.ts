@@ -187,6 +187,19 @@ export class SSHSessionError extends Error {
   }
 }
 
+function isRemotePathWithinRoot(remoteRoot: string, targetPath: string): boolean {
+  const relativePath = posixPath.relative(
+    posixPath.normalize(remoteRoot),
+    posixPath.normalize(targetPath),
+  )
+  return (
+    relativePath === '' ||
+    (relativePath !== '..' &&
+      !relativePath.startsWith('../') &&
+      !posixPath.isAbsolute(relativePath))
+  )
+}
+
 export class RemoteWorkspaceSession {
   private activeRemoteShellCommands = 0
   private readonly remoteShellWaiters: Array<() => void> = []
@@ -223,9 +236,15 @@ export class RemoteWorkspaceSession {
       return this.remoteRoot
     }
 
-    return targetPath.startsWith('/')
+    const resolvedPath = targetPath.startsWith('/')
       ? posixPath.normalize(targetPath)
       : posixPath.resolve(this.remoteRoot, targetPath)
+
+    if (!isRemotePathWithinRoot(this.remoteRoot, resolvedPath)) {
+      throw new SSHSessionError('Remote path is outside the workspace root.')
+    }
+
+    return resolvedPath
   }
 
   toPathToken(targetPath: string): string {

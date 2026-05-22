@@ -6,8 +6,9 @@ import { logs } from '@opentelemetry/api-logs'
 import {
   envDetector,
   hostDetector,
+  type IResource,
   osDetector,
-  resourceFromAttributes,
+  Resource,
 } from '@opentelemetry/resources'
 import {
   BatchLogRecordProcessor,
@@ -351,7 +352,7 @@ function isBigQueryMetricsEnabled() {
  * Uses BETA_TRACING_ENDPOINT instead of OTEL_EXPORTER_OTLP_ENDPOINT.
  */
 async function initializeBetaTracing(
-  resource: ReturnType<typeof resourceFromAttributes>,
+  resource: IResource,
 ): Promise<void> {
   const endpoint = process.env.BETA_TRACING_ENDPOINT
   if (!endpoint) {
@@ -483,12 +484,10 @@ export async function initializeTelemetry() {
     }
   }
 
-  const baseResource = resourceFromAttributes(baseAttributes)
+  const baseResource = new Resource(baseAttributes)
 
   // Use OpenTelemetry detectors
-  const osResource = resourceFromAttributes(
-    osDetector.detect().attributes || {},
-  )
+  const osResource = new Resource(osDetector.detect().attributes || {})
 
   // Extract only host.arch from hostDetector
   const hostDetected = hostDetector.detect()
@@ -497,11 +496,9 @@ export async function initializeTelemetry() {
         [SEMRESATTRS_HOST_ARCH]: hostDetected.attributes[SEMRESATTRS_HOST_ARCH],
       }
     : {}
-  const hostArchResource = resourceFromAttributes(hostArchAttributes)
+  const hostArchResource = new Resource(hostArchAttributes)
 
-  const envResource = resourceFromAttributes(
-    envDetector.detect().attributes || {},
-  )
+  const envResource = new Resource(envDetector.detect().attributes || {})
 
   // Merge resources - later resources take precedence
   const resource = baseResource

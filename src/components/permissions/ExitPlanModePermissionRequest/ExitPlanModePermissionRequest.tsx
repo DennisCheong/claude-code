@@ -38,6 +38,7 @@ import { Markdown } from '../../Markdown.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
+import { shouldOfferBypassPermissionsOption } from '../utils.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('../../../utils/permissions/autoModeState.js') as typeof import('../../../utils/permissions/autoModeState.js') : null;
@@ -145,17 +146,17 @@ export function ExitPlanModePermissionRequest({
   const usage = toolUseConfirm.assistantMessage.message.usage;
   const {
     mode,
-    isAutoModeAvailable,
-    isBypassPermissionsModeAvailable
+    isAutoModeAvailable
   } = toolPermissionContext;
+  const showBypassPermissionsOption = shouldOfferBypassPermissionsOption(toolPermissionContext);
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
     showUltraplan,
     usedPercent: showClearContext ? getContextUsedPercent(usage, mode) : null,
     isAutoModeAvailable,
-    isBypassPermissionsModeAvailable,
+    isBypassPermissionsModeAvailable: showBypassPermissionsOption,
     onFeedbackChange: setPlanFeedback
-  }), [showClearContext, showUltraplan, usage, mode, isAutoModeAvailable, isBypassPermissionsModeAvailable]);
+  }), [showClearContext, showUltraplan, usage, mode, isAutoModeAvailable, showBypassPermissionsOption]);
   function onImagePaste(base64Image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, _sourcePath?: string) {
     const pasteId = nextPasteIdRef.current++;
     const newContent: PastedContent = {
@@ -428,7 +429,7 @@ export function ExitPlanModePermissionRequest({
     // Without this fallback the function would return without resolving the
     // dialog, leaving the query loop blocked and safety state corrupted.
     const keepContextModes: Record<string, PermissionMode> = {
-      'yes-accept-edits-keep-context': toolPermissionContext.isBypassPermissionsModeAvailable ? 'bypassPermissions' : 'acceptEdits',
+      'yes-accept-edits-keep-context': showBypassPermissionsOption ? 'bypassPermissions' : 'acceptEdits',
       'yes-default-keep-context': 'default',
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         'yes-resume-auto-mode': 'default' as const

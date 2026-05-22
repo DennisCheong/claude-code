@@ -1,5 +1,5 @@
 import { homedir } from 'os'
-import { dirname, isAbsolute, join, normalize, relative, resolve } from 'path'
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'path'
 import { getCwd } from './cwd.js'
 import { getFsImplementation } from './fsOperations.js'
 import { getPlatform } from './platform.js'
@@ -96,6 +96,19 @@ export function toRelativePath(absolutePath: string): string {
   const relativePath = relative(getCwd(), absolutePath)
   // If the relative path would go outside cwd (starts with ..), keep absolute
   return relativePath.startsWith('..') ? absolutePath : relativePath
+}
+
+/**
+ * Checks whether targetPath resolves inside baseDir.
+ */
+export function isPathWithin(baseDir: string, targetPath: string): boolean {
+  const relativePath = relative(resolve(baseDir), resolve(targetPath))
+  return (
+    relativePath === '' ||
+    (relativePath !== '..' &&
+      !relativePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativePath))
+  )
 }
 
 /**

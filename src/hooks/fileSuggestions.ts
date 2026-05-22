@@ -1,6 +1,7 @@
 import { statSync } from 'fs'
 import ignore from 'ignore'
 import * as path from 'path'
+import { getProjectRoot } from '../bootstrap/state.js'
 import {
   CLAUDE_CONFIG_DIRECTORIES,
   loadMarkdownFilesForSubdir,
@@ -14,7 +15,6 @@ import {
 import { logEvent } from '../services/analytics/index.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
 import { getGlobalConfig } from '../utils/config.js'
-import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../utils/execFileNoThrow.js'
@@ -25,7 +25,7 @@ import {
   executeFileSuggestionCommand,
 } from '../utils/hooks.js'
 import { logError } from '../utils/log.js'
-import { expandPath } from '../utils/path.js'
+import { expandPath, isPathWithin } from '../utils/path.js'
 import { ripGrep } from '../utils/ripgrep.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { createSignal } from '../utils/signal.js'
@@ -136,7 +136,7 @@ export function pathListSignature(paths: string[]): string {
  * index yet (ENOENT), and non-git dirs — caller falls back to time throttle.
  */
 function getGitIndexMtime(): number | null {
-  const repoRoot = findGitRoot(getCwd())
+  const repoRoot = findGitRoot(getProjectRoot())
   if (!repoRoot) return null
   try {
     // eslint-disable-next-line custom-rules/no-sync-fs -- mtimeMs is the operation here, not a pre-check. findGitRoot above already stat-walks synchronously; one more stat is marginal vs spawning git ls-files on every keystroke. Async would force startBackgroundCacheRefresh to become async, breaking the synchronous fileListRefreshPromise contract at the cold-start await site.
@@ -147,20 +147,47 @@ function getGitIndexMtime(): number | null {
 }
 
 /**
- * Normalize git paths relative to originalCwd
+ * Normalize git paths relative to baseDir, dropping anything outside it.
  */
 function normalizeGitPaths(
   files: string[],
   repoRoot: string,
-  originalCwd: string,
+  baseDir: string,
 ): string[] {
-  if (originalCwd === repoRoot) {
-    return files
-  }
-  return files.map(f => {
+  return files.flatMap(f => {
     const absolutePath = path.join(repoRoot, f)
-    return path.relative(originalCwd, absolutePath)
+    if (!isPathWithin(baseDir, absolutePath)) {
+      return []
+    }
+    const relativePath = path.relative(baseDir, absolutePath)
+    return relativePath ? [relativePath] : []
   })
+}
+
+function getGitPathspecForBase(repoRoot: string, baseDir: string): string | null {
+  const relativeBase = path.relative(repoRoot, baseDir)
+  if (relativeBase === '') {
+    return '.'
+  }
+  if (
+    relativeBase === '..' ||
+    relativeBase.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeBase)
+  ) {
+    return null
+  }
+  return relativeBase.split(path.sep).join('/')
+}
+
+function normalizeDiscoveredPath(filePath: string, baseDir: string): string | null {
+  const absolutePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(baseDir, filePath)
+  if (!isPathWithin(baseDir, absolutePath)) {
+    return null
+  }
+  const relativePath = path.relative(baseDir, absolutePath)
+  return relativePath || null
 }
 
 /**
@@ -253,21 +280,36 @@ async function getFilesUsingGit(
   logForDebugging(`[FileIndex] getFilesUsingGit called`)
 
   // Check if we're in a git repo. findGitRoot is LRU-memoized per path.
-  const repoRoot = findGitRoot(getCwd())
+  const baseDir = getProjectRoot()
+  const repoRoot = findGitRoot(baseDir)
   if (!repoRoot) {
     logForDebugging(`[FileIndex] not a git repo, returning null`)
     return null
   }
 
-  try {
-    const cwd = getCwd()
+  const pathspec = getGitPathspecForBase(repoRoot, baseDir)
+  if (!pathspec) {
+    logForDebugging(
+      `[FileIndex] project root is outside git repo, returning null`,
+    )
+    return null
+  }
 
+  try {
     // Get tracked files (fast - reads from git index)
-    // Run from repoRoot so paths are relative to repo root, not CWD
+    // Run from repoRoot so paths are relative to repo root, then scope with a
+    // pathspec so a nested workspace does not leak parent-repo files as ../..
     const lsFilesStart = Date.now()
     const trackedResult = await execFileNoThrowWithCwd(
       gitExe(),
-      ['-c', 'core.quotepath=false', 'ls-files', '--recurse-submodules'],
+      [
+        '-c',
+        'core.quotepath=false',
+        'ls-files',
+        '--recurse-submodules',
+        '--',
+        pathspec,
+      ],
       { timeout: 5000, abortSignal, cwd: repoRoot },
     )
     logForDebugging(
@@ -283,11 +325,11 @@ async function getFilesUsingGit(
 
     const trackedFiles = trackedResult.stdout.trim().split('\n').filter(Boolean)
 
-    // Normalize paths relative to the current working directory
-    let normalizedTracked = normalizeGitPaths(trackedFiles, repoRoot, cwd)
+    // Normalize paths relative to the session workspace root.
+    let normalizedTracked = normalizeGitPaths(trackedFiles, repoRoot, baseDir)
 
     // Apply .ignore/.rgignore patterns if present (faster than falling back to ripgrep)
-    const ignorePatterns = await loadRipgrepIgnorePatterns(repoRoot, cwd)
+    const ignorePatterns = await loadRipgrepIgnorePatterns(repoRoot, baseDir)
     if (ignorePatterns) {
       const beforeCount = normalizedTracked.length
       normalizedTracked = ignorePatterns.filter(normalizedTracked)
@@ -320,8 +362,17 @@ async function getFilesUsingGit(
             'ls-files',
             '--others',
             '--exclude-standard',
+            '--',
+            pathspec,
           ]
-        : ['-c', 'core.quotepath=false', 'ls-files', '--others']
+        : [
+            '-c',
+            'core.quotepath=false',
+            'ls-files',
+            '--others',
+            '--',
+            pathspec,
+          ]
 
       const generation = cacheGeneration
       untrackedFetchPromise = execFileNoThrowWithCwd(gitExe(), untrackedArgs, {
@@ -342,13 +393,13 @@ async function getFilesUsingGit(
             let normalizedUntracked = normalizeGitPaths(
               rawUntrackedFiles,
               repoRoot,
-              cwd,
+              baseDir,
             )
 
             // Apply .ignore/.rgignore patterns to normalized untracked files
             const ignorePatterns = await loadRipgrepIgnorePatterns(
               repoRoot,
-              cwd,
+              baseDir,
             )
             if (ignorePatterns && normalizedUntracked.length > 0) {
               const beforeCount = normalizedUntracked.length
@@ -442,14 +493,20 @@ function collectDirectoryNames(
 /**
  * Gets additional files from Claude config directories
  */
-async function getClaudeConfigFiles(cwd: string): Promise<string[]> {
+async function getClaudeConfigFiles(
+  cwd: string,
+  baseDir: string,
+): Promise<string[]> {
   const markdownFileArrays = await Promise.all(
     CLAUDE_CONFIG_DIRECTORIES.map(subdir =>
       loadMarkdownFilesForSubdir(subdir, cwd),
     ),
   )
   return markdownFileArrays.flatMap(markdownFiles =>
-    markdownFiles.map(f => f.filePath),
+    markdownFiles.flatMap(f => {
+      const relativePath = normalizeDiscoveredPath(f.filePath, baseDir)
+      return relativePath ? [relativePath] : []
+    }),
   )
 }
 
@@ -463,6 +520,7 @@ async function getProjectFiles(
   logForDebugging(
     `[FileIndex] getProjectFiles called, respectGitignore=${respectGitignore}`,
   )
+  const baseDir = getProjectRoot()
 
   // Try git ls-files first (much faster for git repos)
   const gitFiles = await getFilesUsingGit(abortSignal, respectGitignore)
@@ -499,8 +557,11 @@ async function getProjectFiles(
     rgArgs.push('--no-ignore-vcs')
   }
 
-  const files = await ripGrep(rgArgs, '.', abortSignal)
-  const relativePaths = files.map(f => path.relative(getCwd(), f))
+  const files = await ripGrep(rgArgs, baseDir, abortSignal)
+  const relativePaths = files.flatMap(f => {
+    const relativePath = normalizeDiscoveredPath(f, baseDir)
+    return relativePath ? [relativePath] : []
+  })
 
   const duration = Date.now() - startTime
   logForDebugging(
@@ -531,10 +592,10 @@ export async function getPathsForSuggestions(): Promise<FileIndex> {
     const respectGitignore =
       projectSettings.respectGitignore ?? globalConfig.respectGitignore ?? true
 
-    const cwd = getCwd()
+    const cwd = getProjectRoot()
     const [projectFiles, configFiles] = await Promise.all([
       getProjectFiles(signal, respectGitignore),
-      getClaudeConfigFiles(cwd),
+      getClaudeConfigFiles(cwd, cwd),
     ])
 
     // Cache for mergeUntrackedIntoNormalizedCache
@@ -563,6 +624,12 @@ export async function getPathsForSuggestions(): Promise<FileIndex> {
       )
     }
   } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      logForDebugging(
+        `[FileIndex] ripgrep unavailable; skipping startup file index`,
+      )
+      return index
+    }
     logError(error)
   }
 
@@ -623,6 +690,19 @@ function findMatchingFiles(
   return results.map(result =>
     createFileSuggestionItem(result.path, result.score),
   )
+}
+
+function findMatchingTopLevelPaths(
+  topLevelPaths: string[],
+  partialPath: string,
+): SuggestionItem[] {
+  if (topLevelPaths.length === 0) {
+    return []
+  }
+
+  const topLevelIndex = new FileIndex()
+  topLevelIndex.loadFromFileList(topLevelPaths)
+  return findMatchingFiles(topLevelIndex, partialPath)
 }
 
 /**
@@ -691,7 +771,7 @@ export function startBackgroundCacheRefresh(): void {
  */
 async function getTopLevelPaths(): Promise<string[]> {
   const fs = getFsImplementation()
-  const cwd = getCwd()
+  const cwd = getProjectRoot()
 
   try {
     const entries = await fs.readdir(cwd)
@@ -729,7 +809,14 @@ export async function generateFileSuggestions(
       query: partialPath,
     }
     const results = await executeFileSuggestionCommand(input)
-    return results.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
+    const projectRoot = getProjectRoot()
+    return results
+      .flatMap(result => {
+        const relativePath = normalizeDiscoveredPath(result, projectRoot)
+        return relativePath ? [relativePath] : []
+      })
+      .slice(0, MAX_SUGGESTIONS)
+      .map(createFileSuggestionItem)
   }
 
   // If the partial path is empty or just a dot, return current directory suggestions
@@ -761,9 +848,24 @@ export async function generateFileSuggestions(
       normalizedPath = expandPath(normalizedPath)
     }
 
-    const matches = fileIndex
-      ? findMatchingFiles(fileIndex, normalizedPath)
-      : []
+    const [topLevelPaths, indexedMatches] = await Promise.all([
+    getTopLevelPaths(),
+    Promise.resolve(
+      fileIndex ? findMatchingFiles(fileIndex, normalizedPath) : [],
+    ),
+  ])
+  const topLevelMatches = findMatchingTopLevelPaths(
+    topLevelPaths,
+    normalizedPath,
+  )
+  const seenPaths = new Set<string>()
+  const matches = [...topLevelMatches, ...indexedMatches].filter(match => {
+    if (seenPaths.has(match.displayText)) {
+      return false
+    }
+    seenPaths.add(match.displayText)
+    return true
+  })
 
     const duration = Date.now() - startTime
     logForDebugging(

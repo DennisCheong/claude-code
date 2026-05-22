@@ -116,7 +116,9 @@ export async function glob(
     args.push('--glob', exclusion)
   }
 
-  const allPaths = await ripGrep(args, searchDir, abortSignal)
+  const allPaths = await ripGrep(args, searchDir, abortSignal, {
+    filesFallback: true,
+  })
 
   // ripgrep returns relative paths, convert to absolute
   const absolutePaths = allPaths.map(p =>

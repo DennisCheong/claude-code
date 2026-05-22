@@ -1,4 +1,5 @@
 import { getHostPlatformForAnalytics } from '../../utils/env.js'
+import { isBypassPermissionsModeDisabled } from '../../utils/permissions/permissionSetup.js'
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js'
 import { type CompletionType, logUnaryEvent } from '../../utils/unaryLogging.js'
 import type { ToolPermissionContext } from '../../Tool.js'
@@ -41,7 +42,7 @@ export function shouldOfferBypassPermissionsOption(
   toolPermissionContext: ToolPermissionContext,
 ): boolean {
   return (
-    toolPermissionContext.isBypassPermissionsModeAvailable &&
+    !isBypassPermissionsModeDisabled() &&
     toolPermissionContext.mode !== 'bypassPermissions'
   )
 }

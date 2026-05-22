@@ -1,9 +1,11 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
 import { existsSync } from 'fs'
+import { readdir, realpath, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
+import picomatch from 'picomatch'
 import { logEvent } from 'src/services/analytics/index.js'
 import { fileURLToPath } from 'url'
 import { isInBundledMode } from './bundledMode.js'
@@ -118,6 +120,223 @@ export class RipgrepTimeoutError extends Error {
     super(message)
     this.name = 'RipgrepTimeoutError'
   }
+}
+
+type RipgrepFilesArgs = {
+  globs: string[]
+  hidden: boolean
+  follow: boolean
+  sortModified: boolean
+}
+
+type FileFallbackEntry = {
+  relativePath: string
+  mtimeMs: number
+}
+
+type RipGrepOptions = {
+  filesFallback?: boolean
+}
+
+function parseRipgrepFilesArgs(args: string[]): RipgrepFilesArgs | null {
+  if (!args.includes('--files')) {
+    return null
+  }
+
+  const globs: string[] = []
+  let hidden = false
+  let follow = false
+  let sortModified = false
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--glob') {
+      const pattern = args[i + 1]
+      if (pattern) {
+        globs.push(pattern)
+        i++
+      }
+      continue
+    }
+    if (arg.startsWith('--glob=')) {
+      globs.push(arg.slice('--glob='.length))
+      continue
+    }
+    if (arg === '--hidden') {
+      hidden = true
+      continue
+    }
+    if (arg === '--follow') {
+      follow = true
+      continue
+    }
+    if (arg === '--sort=modified') {
+      sortModified = true
+    }
+  }
+
+  return { globs, hidden, follow, sortModified }
+}
+
+function normalizeFallbackGlob(pattern: string): string {
+  const normalized = pattern.replace(/\\/g, '/').replace(/^\.\//, '')
+  if (normalized.endsWith('/')) {
+    return `${normalized}**`
+  }
+  return normalized
+}
+
+function compileFallbackMatcher(pattern: string): (relativePath: string) => boolean {
+  const normalized = normalizeFallbackGlob(pattern)
+  const matcher = picomatch(normalized, { dot: true })
+  if (normalized.includes('/')) {
+    return matcher
+  }
+
+  const anywhereMatcher = picomatch(`**/${normalized}`, { dot: true })
+  return relativePath => matcher(relativePath) || anywhereMatcher(relativePath)
+}
+
+function throwIfAborted(abortSignal: AbortSignal): void {
+  if (!abortSignal.aborted) {
+    return
+  }
+
+  const error = new Error('The operation was aborted')
+  error.name = 'AbortError'
+  throw error
+}
+
+function relativePathFromRoot(root: string, filePath: string): string {
+  return path.relative(root, filePath).split(path.sep).join('/')
+}
+
+function shouldUseFileFallback(error: ExecFileException): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
+async function ripGrepFilesFallback(
+  args: string[],
+  target: string,
+  abortSignal: AbortSignal,
+): Promise<string[] | null> {
+  const parsed = parseRipgrepFilesArgs(args)
+  if (!parsed) {
+    return null
+  }
+  const parsedArgs = parsed
+
+  logForDebugging('ripgrep unavailable; using JS --files fallback')
+
+  const includeMatchers = parsedArgs.globs
+    .filter(pattern => !pattern.startsWith('!'))
+    .map(compileFallbackMatcher)
+  const excludeMatchers = parsedArgs.globs
+    .filter(pattern => pattern.startsWith('!'))
+    .map(pattern => compileFallbackMatcher(pattern.slice(1)))
+
+  const root = path.resolve(target)
+  const seenDirectories = new Set<string>()
+  const files: FileFallbackEntry[] = []
+
+  const isExcluded = (relativePath: string) =>
+    excludeMatchers.some(matcher => matcher(relativePath))
+  const isIncluded = (relativePath: string) =>
+    includeMatchers.length === 0 ||
+    includeMatchers.some(matcher => matcher(relativePath))
+
+  async function walk(directory: string): Promise<void> {
+    throwIfAborted(abortSignal)
+
+    let realDirectory: string
+    try {
+      realDirectory = await realpath(directory)
+    } catch {
+      realDirectory = directory
+    }
+    if (seenDirectories.has(realDirectory)) {
+      return
+    }
+    seenDirectories.add(realDirectory)
+
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      throwIfAborted(abortSignal)
+
+      if (!parsedArgs.hidden && entry.name.startsWith('.')) {
+        continue
+      }
+
+      const fullPath = path.join(directory, entry.name)
+      const relativePath = relativePathFromRoot(root, fullPath)
+      if (!relativePath || relativePath.startsWith('..')) {
+        continue
+      }
+
+      const excludedDirectory =
+        isExcluded(relativePath) ||
+        isExcluded(`${relativePath}/`) ||
+        isExcluded(`${relativePath}/__claude_code__`)
+
+      if (entry.isDirectory()) {
+        if (!excludedDirectory) {
+          await walk(fullPath)
+        }
+        continue
+      }
+
+      if (entry.isSymbolicLink()) {
+        if (!parsedArgs.follow) {
+          continue
+        }
+
+        const linked = await stat(fullPath).catch(() => null)
+        if (!linked) {
+          continue
+        }
+        if (linked.isDirectory()) {
+          if (!excludedDirectory) {
+            await walk(fullPath)
+          }
+          continue
+        }
+        if (!linked.isFile()) {
+          continue
+        }
+      } else if (!entry.isFile()) {
+        continue
+      }
+
+      if (isExcluded(relativePath) || !isIncluded(relativePath)) {
+        continue
+      }
+
+      const mtimeMs = parsedArgs.sortModified
+        ? (await stat(fullPath).catch(() => null))?.mtimeMs ?? 0
+        : 0
+      files.push({ relativePath, mtimeMs })
+    }
+  }
+
+  await walk(root)
+
+  if (parsedArgs.sortModified) {
+    files.sort((a, b) => {
+      const timeComparison = a.mtimeMs - b.mtimeMs
+      if (timeComparison !== 0) {
+        return timeComparison
+      }
+      return a.relativePath.localeCompare(b.relativePath)
+    })
+  }
+
+  return files.map(file => file.relativePath)
 }
 
 function ripGrepRaw(
@@ -361,11 +580,16 @@ export async function ripGrep(
   args: string[],
   target: string,
   abortSignal: AbortSignal,
+  options: RipGrepOptions = {},
 ): Promise<string[]> {
   await codesignRipgrepIfNecessary()
 
   // Test ripgrep on first use and cache the result (fire and forget)
   void testRipgrepOnFirstUse().catch(error => {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      logForDebugging(`Ripgrep unavailable: ${(error as Error).message}`)
+      return
+    }
     logError(error)
   })
 
@@ -398,6 +622,19 @@ export async function ripGrep(
       // These should be surfaced to the user rather than silently returning empty results
       const CRITICAL_ERROR_CODES = ['ENOENT', 'EACCES', 'EPERM']
       if (CRITICAL_ERROR_CODES.includes(error.code as string)) {
+        if (options.filesFallback && shouldUseFileFallback(error)) {
+          void ripGrepFilesFallback(args, target, abortSignal).then(
+            fallbackFiles => {
+              if (fallbackFiles) {
+                resolve(fallbackFiles)
+              } else {
+                reject(error)
+              }
+            },
+            () => reject(error),
+          )
+          return
+        }
         reject(error)
         return
       }
