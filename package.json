@@ -73,6 +73,7 @@
     "react": "^19.0.0",
     "react-reconciler": "^0.31.0",
     "semver": "^7.6.0",
+    "sharp": "^0.33.5",
     "shell-quote": "^1.8.3",
     "stack-utils": "^2.0.6",
     "strip-ansi": "^7.1.0",

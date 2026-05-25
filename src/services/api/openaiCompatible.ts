@@ -388,7 +388,7 @@ function flushBufferedUserContent(
     role: 'user',
     content: textOnly
       ? parts.map(part => String(part.text ?? '')).join('')
-      : parts,
+      : [...parts],
   })
   parts.length = 0
 }

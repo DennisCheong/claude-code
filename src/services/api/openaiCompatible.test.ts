@@ -112,6 +112,81 @@ describe('createOpenAICompatibleMessage', () => {
       },
     ])
   })
+
+  it('preserves mixed text and image user parts as an OpenAI content array', async () => {
+    let requestBody: Record<string, unknown> | undefined
+
+    await createOpenAICompatibleMessage(
+      {
+        model: 'qwen3.6-plus',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '描述這張圖片' },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: 'abc123',
+                },
+                cache_control: { type: 'ephemeral' },
+              },
+            ],
+          },
+        ],
+        max_tokens: 16,
+      },
+      {
+        apiKey: 'test-key',
+        fetchOverride: async (_input, init) => {
+          requestBody = JSON.parse(String(init?.body ?? '{}')) as Record<
+            string,
+            unknown
+          >
+
+          return new Response(
+            JSON.stringify({
+              id: 'resp_1',
+              model: 'qwen3.6-plus',
+              choices: [
+                {
+                  index: 0,
+                  message: { role: 'assistant', content: 'ok' },
+                  finish_reason: 'stop',
+                },
+              ],
+              usage: {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          )
+        },
+      },
+    )
+
+    assert.ok(requestBody)
+    assert.deepEqual(requestBody.messages, [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '描述這張圖片' },
+          {
+            type: 'image_url',
+            image_url: {
+              url: 'data:image/jpeg;base64,abc123',
+            },
+          },
+        ],
+      },
+    ])
+  })
 })
 
 describe('createOpenAICompatibleStream', () => {

@@ -11,6 +11,7 @@ import {
 import { logEvent } from '../services/analytics/index.js'
 import {
   getImageProcessor,
+  isImageProcessorUnavailableError,
   type SharpFunction,
   type SharpInstance,
 } from '../tools/FileReadTool/imageProcessor.js'
@@ -381,8 +382,11 @@ export async function maybeResizeAndDownsampleImageBuffer(
       },
     }
   } catch (error) {
+    const isProcessorUnavailable = isImageProcessorUnavailableError(error)
     // Log the error and emit analytics event
-    logError(error as Error)
+    if (!isProcessorUnavailable) {
+      logError(error as Error)
+    }
     const errorType = classifyImageError(error)
     const errorMsg = errorMessage(error)
     logEvent('tengu_image_resize_failed', {
@@ -418,6 +422,14 @@ export async function maybeResizeAndDownsampleImageBuffer(
         error_type: errorType,
       })
       return { buffer: imageBuffer, mediaType: normalizedExt }
+    }
+
+    if (isProcessorUnavailable) {
+      throw new ImageResizeError(
+        overDim
+          ? `Unable to resize image because no image processor is available and the image exceeds the ${IMAGE_MAX_WIDTH}x${IMAGE_MAX_HEIGHT}px limit. Install "sharp" or resize the image manually.`
+          : 'Unable to resize image because no image processor is available and the image exceeds the 5MB API limit. Install "sharp" or use a smaller image.',
+      )
     }
 
     // Image is too large and we failed to compress it - fail with user-friendly error
@@ -546,8 +558,11 @@ export async function compressImageBuffer(
     // Last resort: ultra-compressed JPEG
     return await createUltraCompressedJPEG(context, sharp)
   } catch (error) {
+    const isProcessorUnavailable = isImageProcessorUnavailableError(error)
     // Log the error and emit analytics event
-    logError(error as Error)
+    if (!isProcessorUnavailable) {
+      logError(error as Error)
+    }
     const errorType = classifyImageError(error)
     const errorMsg = errorMessage(error)
     logEvent('tengu_image_compress_failed', {
@@ -566,6 +581,12 @@ export async function compressImageBuffer(
         mediaType: detected,
         originalSize: imageBuffer.length,
       }
+    }
+
+    if (isProcessorUnavailable) {
+      throw new ImageResizeError(
+        'Unable to compress image because no image processor is available. Install "sharp" or use a smaller image.',
+      )
     }
 
     // Image is too large and compression failed - throw error
