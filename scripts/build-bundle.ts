@@ -92,11 +92,15 @@ function resolveImportBasePath(args: esbuild.OnResolveArgs): string {
     : resolve(args.resolveDir, args.path)
 }
 
+function normalizePathSeparators(filePath: string): string {
+  return filePath.replaceAll('\\', '/')
+}
+
 const featureFlagInliningPlugin: esbuild.Plugin = {
   name: 'feature-flag-inline',
   setup(build) {
     build.onLoad({ filter: /\.[jt]sx?$/ }, args => {
-      if (args.path.includes('/node_modules/')) {
+      if (normalizePathSeparators(args.path).includes('/node_modules/')) {
         return undefined
       }
 
@@ -213,7 +217,11 @@ const srcResolverPlugin: esbuild.Plugin = {
     )
 
     build.onResolve({ filter: /(^\.\/types\.js$|filePersistence\/types\.js$)/ }, args => {
-      if (!args.resolveDir.endsWith('/src/utils/filePersistence')) {
+      if (
+        !normalizePathSeparators(args.resolveDir).endsWith(
+          '/src/utils/filePersistence',
+        )
+      ) {
         return undefined
       }
 
